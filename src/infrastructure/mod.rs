@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod copilot;
 pub mod git_cli;
 pub mod git_remote;
 pub mod github;

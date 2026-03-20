@@ -1,5 +1,7 @@
+pub mod ai;
 pub mod branch;
 pub mod commit;
+pub mod config;
 pub mod errors;
 pub mod pull_request;
 pub mod remote;

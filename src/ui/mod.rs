@@ -1,6 +1,7 @@
 pub mod branch_panel;
 pub mod branches_view;
 pub mod commit_panel;
+pub mod copilot_login_panel;
 pub mod diff_panel;
 pub mod help;
 pub mod layout;

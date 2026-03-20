@@ -1,13 +1,24 @@
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::mpsc;
+use std::thread;
 
 use anyhow::{Result, anyhow};
 use crossterm::event::KeyEvent;
 
 use crate::app::actions::{AppAction, map_key_event};
+use crate::app::background::{BackgroundResult, DeviceCodeInfo, create_channel};
 use crate::app::state::{AppState, Modal, RepositoryState};
 use crate::domain::branch::BranchName;
 use crate::domain::commit::CommitMessage;
 use crate::domain::status::FileSection;
+use crate::infrastructure::ai::AiService;
+use crate::infrastructure::copilot::auth::{
+    CopilotTokenManager, load_auth, poll_for_oauth_token, save_auth, start_device_flow,
+};
+use crate::infrastructure::copilot::client::CopilotAiService;
+use crate::infrastructure::copilot::diff::prepare_diff_context;
+use crate::infrastructure::copilot::types::StoredAuth;
 use crate::infrastructure::git_cli::{GitCliRepositoryService, GitRepositoryService};
 use crate::infrastructure::repo_discovery::{RepositoryDiscovery, WalkDirRepositoryDiscovery};
 
@@ -17,23 +28,86 @@ pub struct AppController {
     git: GitCliRepositoryService,
     root: PathBuf,
     max_depth: usize,
+    ai_service: Option<Arc<dyn AiService>>,
+    bg_sender: mpsc::Sender<BackgroundResult>,
+    bg_receiver: mpsc::Receiver<BackgroundResult>,
 }
 
 impl AppController {
     pub fn bootstrap(root: PathBuf) -> Result<Self> {
+        let (bg_sender, bg_receiver) = create_channel();
+
+        // Try to load saved auth and construct AI service
+        let (ai_service, copilot_authenticated) = match load_auth() {
+            Ok(auth) => {
+                let token_manager = CopilotTokenManager::new(auth.oauth_token);
+                let service = CopilotAiService::new(token_manager, "gpt-4o".to_string());
+                (Some(Arc::new(service) as Arc<dyn AiService>), true)
+            }
+            Err(_) => (None, false),
+        };
+
         let mut controller = Self {
             state: AppState::default(),
             discovery: WalkDirRepositoryDiscovery,
             git: GitCliRepositoryService,
             root,
             max_depth: 3,
+            ai_service,
+            bg_sender,
+            bg_receiver,
         };
+        controller.state.copilot_authenticated = copilot_authenticated;
         controller.refresh_repositories()?;
         Ok(controller)
     }
 
     pub fn state(&self) -> &AppState {
         &self.state
+    }
+
+    pub fn check_background_results(&mut self) {
+        while let Ok(result) = self.bg_receiver.try_recv() {
+            match result {
+                BackgroundResult::CommitMessageGenerated(Ok(msg)) => {
+                    self.state.ai_loading = false;
+                    let mut text = msg.subject;
+                    if let Some(body) = msg.body {
+                        text.push('\n');
+                        text.push_str(&body);
+                    }
+                    self.state.commit_message_input = text;
+                }
+                BackgroundResult::CommitMessageGenerated(Err(e)) => {
+                    self.state.ai_loading = false;
+                    self.state.set_error(format!("AI generation failed: {e}"));
+                }
+                BackgroundResult::DeviceCodeReceived(Ok(info)) => {
+                    self.state.device_code = Some(info);
+                    self.state.modal = Modal::CopilotLogin;
+                }
+                BackgroundResult::DeviceCodeReceived(Err(e)) => {
+                    self.state.set_error(format!("Device flow failed: {e}"));
+                }
+                BackgroundResult::LoginCompleted(Ok(())) => {
+                    // Reconstruct AI service from saved auth
+                    if let Ok(auth) = load_auth() {
+                        let token_manager = CopilotTokenManager::new(auth.oauth_token);
+                        let service = CopilotAiService::new(token_manager, "gpt-4o".to_string());
+                        self.ai_service = Some(Arc::new(service) as Arc<dyn AiService>);
+                        self.state.copilot_authenticated = true;
+                    }
+                    self.state.device_code = None;
+                    self.state.modal = Modal::None;
+                    self.state.set_info("Logged in to GitHub Copilot");
+                }
+                BackgroundResult::LoginCompleted(Err(e)) => {
+                    self.state.device_code = None;
+                    self.state.modal = Modal::None;
+                    self.state.set_error(format!("Copilot login failed: {e}"));
+                }
+            }
+        }
     }
 
     pub fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<()> {
@@ -80,11 +154,80 @@ impl AppController {
             AppAction::PreviousView => self.state.previous_view(),
             AppAction::DeleteBranch => self.delete_branch()?,
             AppAction::MergeBranch => self.merge_branch()?,
+            AppAction::GenerateCommitMessage => self.generate_commit_message()?,
+            AppAction::CopilotLogin => self.copilot_login(),
         }
 
         self.state.sync_selection();
         self.refresh_diff();
         Ok(())
+    }
+
+    fn generate_commit_message(&mut self) -> Result<()> {
+        let ai = self
+            .ai_service
+            .clone()
+            .ok_or_else(|| anyhow!("not logged in to Copilot — press Ctrl+l to login"))?;
+
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+
+        let context = prepare_diff_context(&self.git, &repo_path)?;
+        if context.trim().is_empty() {
+            return Err(anyhow!("no staged changes to generate a message for"));
+        }
+
+        self.state.ai_loading = true;
+        let sender = self.bg_sender.clone();
+
+        thread::spawn(move || {
+            let result = ai.generate_commit_message(&context);
+            let _ = sender.send(BackgroundResult::CommitMessageGenerated(result));
+        });
+
+        Ok(())
+    }
+
+    fn copilot_login(&mut self) {
+        let sender = self.bg_sender.clone();
+
+        thread::spawn(move || {
+            // Step 1: Start device flow
+            let device_resp = match start_device_flow() {
+                Ok(resp) => resp,
+                Err(e) => {
+                    let _ = sender.send(BackgroundResult::DeviceCodeReceived(Err(e)));
+                    return;
+                }
+            };
+
+            // Send device code info to UI
+            let _ = sender.send(BackgroundResult::DeviceCodeReceived(Ok(DeviceCodeInfo {
+                user_code: device_resp.user_code.clone(),
+                verification_uri: device_resp.verification_uri.clone(),
+            })));
+
+            // Step 2: Poll for OAuth token
+            let oauth_token =
+                match poll_for_oauth_token(&device_resp.device_code, device_resp.interval) {
+                    Ok(token) => token,
+                    Err(e) => {
+                        let _ = sender.send(BackgroundResult::LoginCompleted(Err(e)));
+                        return;
+                    }
+                };
+
+            // Step 3: Save auth
+            let auth = StoredAuth { oauth_token };
+            if let Err(e) = save_auth(&auth) {
+                let _ = sender.send(BackgroundResult::LoginCompleted(Err(e)));
+                return;
+            }
+
+            let _ = sender.send(BackgroundResult::LoginCompleted(Ok(())));
+        });
     }
 
     fn refresh_repositories(&mut self) -> Result<()> {
@@ -250,6 +393,7 @@ impl AppController {
             Modal::BranchSwitch => self.confirm_branch_switch(),
             Modal::BranchCreate => self.confirm_branch_create(),
             Modal::Commit => self.confirm_commit(),
+            Modal::CopilotLogin => Ok(()),
         }
     }
 
@@ -326,7 +470,7 @@ impl AppController {
         match self.state.modal {
             Modal::BranchCreate => self.state.branch_name_input.push(ch),
             Modal::Commit => self.state.commit_message_input.push(ch),
-            Modal::None | Modal::BranchSwitch => {}
+            Modal::None | Modal::BranchSwitch | Modal::CopilotLogin => {}
         }
     }
 
@@ -338,7 +482,7 @@ impl AppController {
             Modal::Commit => {
                 self.state.commit_message_input.pop();
             }
-            Modal::None | Modal::BranchSwitch => {}
+            Modal::None | Modal::BranchSwitch | Modal::CopilotLogin => {}
         }
     }
 

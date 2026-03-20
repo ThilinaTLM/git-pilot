@@ -21,6 +21,10 @@ pub trait GitRepositoryService {
     fn merge_branch(&self, repo_path: &Path, branch_name: &BranchName) -> Result<()>;
     fn diff_file(&self, repo_path: &Path, file_path: &Path, section: FileSection)
     -> Result<String>;
+    fn diff_staged(&self, repo_path: &Path) -> Result<String>;
+    fn diff_staged_stat(&self, repo_path: &Path) -> Result<String>;
+    fn diff_staged_file_names(&self, repo_path: &Path) -> Result<Vec<String>>;
+    fn diff_staged_file(&self, repo_path: &Path, file_path: &str) -> Result<String>;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -95,6 +99,39 @@ impl GitRepositoryService for GitCliRepositoryService {
         let mut command = base_git_command(repo_path);
         command.arg("merge").arg(branch_name.as_str());
         run_command(&mut command).map(|_| ())
+    }
+
+    fn diff_staged(&self, repo_path: &Path) -> Result<String> {
+        let mut command = base_git_command(repo_path);
+        command.arg("diff").arg("--cached");
+        let output = run_command(&mut command)?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    fn diff_staged_stat(&self, repo_path: &Path) -> Result<String> {
+        let mut command = base_git_command(repo_path);
+        command.arg("diff").arg("--cached").arg("--stat");
+        let output = run_command(&mut command)?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    fn diff_staged_file_names(&self, repo_path: &Path) -> Result<Vec<String>> {
+        let mut command = base_git_command(repo_path);
+        command.arg("diff").arg("--cached").arg("--name-only");
+        let output = run_command(&mut command)?;
+        let names = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| line.to_string())
+            .collect();
+        Ok(names)
+    }
+
+    fn diff_staged_file(&self, repo_path: &Path, file_path: &str) -> Result<String> {
+        let mut command = base_git_command(repo_path);
+        command.arg("diff").arg("--cached").arg("--").arg(file_path);
+        let output = run_command(&mut command)?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
     fn diff_file(

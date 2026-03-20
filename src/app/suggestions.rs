@@ -47,6 +47,10 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                     label: "cancel",
                 },
             ],
+            Modal::CopilotLogin => vec![Suggestion {
+                key_hint: "Esc",
+                label: "cancel",
+            }],
             Modal::None => vec![],
         };
     }

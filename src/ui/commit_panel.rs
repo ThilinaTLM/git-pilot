@@ -49,7 +49,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let (subject, body) = split_subject_body(input);
 
     // Subject input field
-    let subject_label = if subject.is_empty() {
+    let subject_label = if state.ai_loading {
+        "Subject (generating with AI...)"
+    } else if subject.is_empty() {
         "Subject (required)"
     } else {
         "Subject"
@@ -62,7 +64,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let subject_inner = subject_block.inner(layout[2]);
     frame.render_widget(subject_block, layout[2]);
 
-    let subject_display = if subject.is_empty() {
+    let subject_display = if state.ai_loading {
+        Line::from(Span::styled(
+            "Generating with AI...",
+            Style::default()
+                .fg(Color::Rgb(34, 211, 238))
+                .bg(Color::Rgb(15, 23, 42)),
+        ))
+    } else if subject.is_empty() {
         Line::from(Span::styled(
             "Write a short summary of changes...",
             Style::default()
@@ -152,14 +161,29 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     );
 
     // Shortcut bar at bottom
-    let shortcuts = Line::from(vec![
+    let ai_shortcut = if state.copilot_authenticated {
+        vec![
+            Span::styled("  Ctrl+g ", theme::modal_accent_style()),
+            Span::styled("generate", theme::modal_muted_style()),
+        ]
+    } else {
+        vec![
+            Span::styled("  Ctrl+l ", theme::modal_accent_style()),
+            Span::styled("login", theme::modal_muted_style()),
+        ]
+    };
+    let mut shortcut_spans = vec![
         Span::styled("Enter ", theme::modal_accent_style()),
         Span::styled("commit", theme::modal_muted_style()),
         Span::styled("  Ctrl+n ", theme::modal_accent_style()),
         Span::styled("newline", theme::modal_muted_style()),
+    ];
+    shortcut_spans.extend(ai_shortcut);
+    shortcut_spans.extend(vec![
         Span::styled("  Esc ", theme::modal_accent_style()),
         Span::styled("cancel", theme::modal_muted_style()),
     ]);
+    let shortcuts = Line::from(shortcut_spans);
     frame.render_widget(Paragraph::new(shortcuts), layout[6]);
 }
 

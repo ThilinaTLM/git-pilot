@@ -41,6 +41,7 @@ fn run_loop(
     controller: &mut AppController,
 ) -> Result<()> {
     loop {
+        controller.check_background_results();
         terminal.draw(|frame| ui::screen::render(frame, controller.state()))?;
 
         if controller.state().should_quit {

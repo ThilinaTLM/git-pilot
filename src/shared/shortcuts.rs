@@ -129,4 +129,12 @@ pub const MODAL_SHORTCUTS: &[ShortcutEntry] = &[
         keys: "Ctrl+n",
         description: "insert newline in the commit editor",
     },
+    ShortcutEntry {
+        keys: "Ctrl+g",
+        description: "generate commit message with AI",
+    },
+    ShortcutEntry {
+        keys: "Ctrl+l",
+        description: "login to GitHub Copilot",
+    },
 ];

@@ -34,6 +34,7 @@ pub enum Modal {
     BranchSwitch,
     BranchCreate,
     Commit,
+    CopilotLogin,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -156,6 +157,9 @@ pub struct AppState {
     pub grouped_files: GroupedFileList,
     pub diff_content: Option<String>,
     pub diff_scroll: u16,
+    pub ai_loading: bool,
+    pub device_code: Option<crate::app::background::DeviceCodeInfo>,
+    pub copilot_authenticated: bool,
 }
 
 impl Default for AppState {
@@ -175,6 +179,9 @@ impl Default for AppState {
             grouped_files: GroupedFileList::default(),
             diff_content: None,
             diff_scroll: 0,
+            ai_loading: false,
+            device_code: None,
+            copilot_authenticated: false,
         }
     }
 }

@@ -34,6 +34,8 @@ pub enum AppAction {
     PreviousView,
     DeleteBranch,
     MergeBranch,
+    GenerateCommitMessage,
+    CopilotLogin,
 }
 
 pub fn map_key_event(view: &View, modal: &Modal, key_event: KeyEvent) -> AppAction {
@@ -54,7 +56,11 @@ fn map_modal_key(modal: &Modal, key_event: KeyEvent) -> AppAction {
         Modal::None => AppAction::Noop,
         Modal::BranchSwitch => map_branch_switch_key(key_event),
         Modal::BranchCreate => map_text_input_key(key_event, false),
-        Modal::Commit => map_text_input_key(key_event, true),
+        Modal::Commit => map_commit_input_key(key_event),
+        Modal::CopilotLogin => match key_event.code {
+            KeyCode::Esc => AppAction::CloseModal,
+            _ => AppAction::Noop,
+        },
     }
 }
 
@@ -118,6 +124,25 @@ fn map_branch_switch_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Enter => AppAction::ConfirmModal,
         KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextBranch,
         KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousBranch,
+        _ => AppAction::Noop,
+    }
+}
+
+fn map_commit_input_key(key_event: KeyEvent) -> AppAction {
+    if key_event.modifiers == KeyModifiers::CONTROL {
+        return match key_event.code {
+            KeyCode::Char('n') => AppAction::InsertNewline,
+            KeyCode::Char('g') => AppAction::GenerateCommitMessage,
+            KeyCode::Char('l') => AppAction::CopilotLogin,
+            _ => AppAction::Noop,
+        };
+    }
+
+    match key_event.code {
+        KeyCode::Esc => AppAction::CloseModal,
+        KeyCode::Enter => AppAction::ConfirmModal,
+        KeyCode::Backspace => AppAction::Backspace,
+        KeyCode::Char(ch) => AppAction::InsertChar(ch),
         _ => AppAction::Noop,
     }
 }
