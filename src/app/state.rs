@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::domain::repo::{RepositoryDetails, RepositorySummary};
-use crate::domain::status::ChangedFile;
+use crate::domain::status::{ChangedFile, FileSection};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ActivePanel {
@@ -58,6 +58,63 @@ impl RepositoryState {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileEntry {
+    pub file_index: usize,
+    pub section: FileSection,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct GroupedFileList {
+    pub entries: Vec<FileEntry>,
+}
+
+impl GroupedFileList {
+    pub fn build(files: &[ChangedFile]) -> Self {
+        let mut entries = Vec::new();
+
+        // Staged
+        for (i, file) in files.iter().enumerate() {
+            if file.staged {
+                entries.push(FileEntry {
+                    file_index: i,
+                    section: FileSection::Staged,
+                });
+            }
+        }
+
+        // Unstaged (tracked, not untracked)
+        for (i, file) in files.iter().enumerate() {
+            if file.unstaged && !file.untracked {
+                entries.push(FileEntry {
+                    file_index: i,
+                    section: FileSection::Unstaged,
+                });
+            }
+        }
+
+        // Untracked
+        for (i, file) in files.iter().enumerate() {
+            if file.untracked {
+                entries.push(FileEntry {
+                    file_index: i,
+                    section: FileSection::Untracked,
+                });
+            }
+        }
+
+        Self { entries }
+    }
+
+    pub fn section_count(&self, section: FileSection) -> usize {
+        self.entries.iter().filter(|e| e.section == section).count()
+    }
+
+    pub fn has_section(&self, section: FileSection) -> bool {
+        self.entries.iter().any(|e| e.section == section)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AppState {
     pub repos: Vec<RepositoryState>,
@@ -70,6 +127,9 @@ pub struct AppState {
     pub message: Option<FlashMessage>,
     pub show_help: bool,
     pub should_quit: bool,
+    pub grouped_files: GroupedFileList,
+    pub diff_content: Option<String>,
+    pub diff_scroll: u16,
 }
 
 impl Default for AppState {
@@ -85,6 +145,9 @@ impl Default for AppState {
             message: None,
             show_help: false,
             should_quit: false,
+            grouped_files: GroupedFileList::default(),
+            diff_content: None,
+            diff_scroll: 0,
         }
     }
 }
@@ -127,13 +190,15 @@ impl AppState {
     }
 
     pub fn sync_selection(&mut self) {
-        if let Some((file_len, branch_len)) = self
-            .selected_repo_ref()
-            .map(|repo| (repo.status_files.len(), repo.branches.len()))
-        {
-            self.selected_file = self.selected_file.min(file_len.saturating_sub(1));
+        if let Some(repo) = self.repos.get(self.selected_repo) {
+            let grouped = GroupedFileList::build(&repo.status_files);
+            let entry_len = grouped.entries.len();
+            let branch_len = repo.branches.len();
+            self.grouped_files = grouped;
+            self.selected_file = self.selected_file.min(entry_len.saturating_sub(1));
             self.selected_branch = self.selected_branch.min(branch_len.saturating_sub(1));
         } else {
+            self.grouped_files = GroupedFileList::default();
             self.selected_file = 0;
             self.selected_branch = 0;
         }
@@ -144,6 +209,8 @@ impl AppState {
             self.selected_repo = (self.selected_repo + 1) % self.repos.len();
             self.selected_file = 0;
             self.selected_branch = self.current_branch_index().unwrap_or(0);
+            self.diff_content = None;
+            self.diff_scroll = 0;
         }
     }
 
@@ -156,23 +223,23 @@ impl AppState {
             };
             self.selected_file = 0;
             self.selected_branch = self.current_branch_index().unwrap_or(0);
+            self.diff_content = None;
+            self.diff_scroll = 0;
         }
     }
 
     pub fn select_next_file(&mut self) {
-        if let Some(repo) = self.selected_repo_ref()
-            && !repo.status_files.is_empty()
-        {
-            self.selected_file = (self.selected_file + 1) % repo.status_files.len();
+        let len = self.grouped_files.entries.len();
+        if len > 0 {
+            self.selected_file = (self.selected_file + 1) % len;
         }
     }
 
     pub fn select_previous_file(&mut self) {
-        if let Some(repo) = self.selected_repo_ref()
-            && !repo.status_files.is_empty()
-        {
+        let len = self.grouped_files.entries.len();
+        if len > 0 {
             self.selected_file = if self.selected_file == 0 {
-                repo.status_files.len() - 1
+                len - 1
             } else {
                 self.selected_file - 1
             };
@@ -235,11 +302,20 @@ impl AppState {
             .map(|repo| repo.summary.path.clone())
     }
 
+    pub fn selected_file_entry(&self) -> Option<&FileEntry> {
+        self.grouped_files.entries.get(self.selected_file)
+    }
+
     pub fn selected_file_path(&self) -> Option<&Path> {
+        let entry = self.selected_file_entry()?;
         self.selected_repo_ref()?
             .status_files
-            .get(self.selected_file)
+            .get(entry.file_index)
             .map(|file| file.path.as_path())
+    }
+
+    pub fn selected_file_section(&self) -> Option<FileSection> {
+        self.selected_file_entry().map(|e| e.section)
     }
 
     pub fn selected_branch_name(&self) -> Option<&str> {

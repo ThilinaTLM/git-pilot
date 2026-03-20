@@ -1,7 +1,9 @@
 pub mod branch_panel;
 pub mod commit_panel;
+pub mod diff_panel;
 pub mod help;
 pub mod layout;
 pub mod screen;
 pub mod status_list;
 pub mod tabs;
+pub mod theme;

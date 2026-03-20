@@ -1,7 +1,8 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Tabs};
+use ratatui::widgets::Tabs;
 
 use crate::app::state::AppState;
+use crate::ui::theme;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let titles = if state.repos.is_empty() {
@@ -14,15 +15,16 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             .collect::<Vec<_>>()
     };
 
-    let tabs = Tabs::new(titles)
-        .block(Block::default().title("Repositories").borders(Borders::ALL))
-        .select(state.selected_repo.min(state.repos.len().saturating_sub(1)))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
-        .divider("│");
+    let rule = theme::tabs_rule_block();
+    let inner = rule.inner(area);
+    frame.render_widget(rule, area);
 
-    frame.render_widget(tabs, area);
+    let tabs = Tabs::new(titles)
+        .style(theme::inactive_tab_style())
+        .select(state.selected_repo.min(state.repos.len().saturating_sub(1)))
+        .highlight_style(theme::active_tab_style())
+        .divider(" ")
+        .padding(" ", " ");
+
+    frame.render_widget(tabs, inner);
 }

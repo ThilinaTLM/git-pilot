@@ -1,31 +1,47 @@
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
+
+use crate::ui::theme;
 
 pub struct ScreenLayout {
     pub tabs: Rect,
-    pub content_left: Rect,
-    pub content_right: Rect,
+    pub status_bar: Rect,
+    pub file_list: Rect,
+    pub diff_preview: Rect,
     pub footer: Rect,
 }
 
 pub fn build_layout(area: Rect) -> ScreenLayout {
+    let page = area.inner(Margin {
+        horizontal: theme::PAGE_MARGIN_X,
+        vertical: theme::PAGE_MARGIN_Y,
+    });
     let vertical = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),
+            Constraint::Length(theme::SECTION_GAP),
+            Constraint::Length(1),
+            Constraint::Length(theme::SECTION_GAP),
             Constraint::Min(10),
-            Constraint::Length(2),
+            Constraint::Length(theme::SECTION_GAP),
+            Constraint::Length(3),
         ])
-        .split(area);
+        .split(page);
     let horizontal = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(32), Constraint::Percentage(68)])
-        .split(vertical[1]);
+        .constraints([
+            Constraint::Percentage(40),
+            Constraint::Length(theme::PANE_GAP),
+            Constraint::Percentage(60),
+        ])
+        .split(vertical[4]);
 
     ScreenLayout {
         tabs: vertical[0],
-        content_left: horizontal[0],
-        content_right: horizontal[1],
-        footer: vertical[2],
+        status_bar: vertical[2],
+        file_list: horizontal[0],
+        diff_preview: horizontal[2],
+        footer: vertical[6],
     }
 }
 

@@ -5,7 +5,7 @@ use anyhow::{Context, Result, anyhow};
 use crate::domain::branch::{BranchInfo, BranchName};
 use crate::domain::commit::CommitMessage;
 use crate::domain::repo::{RepositoryDetails, RepositorySummary};
-use crate::domain::status::{ChangedFile, RepositoryStatus};
+use crate::domain::status::{ChangedFile, FileSection, RepositoryStatus};
 use crate::infrastructure::process::{base_git_command, run_command};
 
 pub trait GitRepositoryService {
@@ -17,6 +17,12 @@ pub trait GitRepositoryService {
     fn switch_branch(&self, repo_path: &Path, branch_name: &BranchName) -> Result<()>;
     fn create_branch(&self, repo_path: &Path, branch_name: &BranchName) -> Result<()>;
     fn commit(&self, repo_path: &Path, message: &CommitMessage) -> Result<()>;
+    fn diff_file(
+        &self,
+        repo_path: &Path,
+        file_path: &Path,
+        section: FileSection,
+    ) -> Result<String>;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -79,6 +85,44 @@ impl GitRepositoryService for GitCliRepositoryService {
             command.arg("-m").arg(message_part);
         }
         run_command(&mut command).map(|_| ())
+    }
+
+    fn diff_file(
+        &self,
+        repo_path: &Path,
+        file_path: &Path,
+        section: FileSection,
+    ) -> Result<String> {
+        match section {
+            FileSection::Untracked => {
+                let mut command = base_git_command(repo_path);
+                command
+                    .arg("diff")
+                    .arg("--no-index")
+                    .arg("--")
+                    .arg("/dev/null")
+                    .arg(file_path);
+                // --no-index returns exit code 1 when files differ, so we read output directly
+                let output = command.output().context("failed to execute git diff")?;
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            }
+            FileSection::Staged => {
+                let mut command = base_git_command(repo_path);
+                command
+                    .arg("diff")
+                    .arg("--cached")
+                    .arg("--")
+                    .arg(file_path);
+                let output = run_command(&mut command)?;
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            }
+            FileSection::Unstaged => {
+                let mut command = base_git_command(repo_path);
+                command.arg("diff").arg("--").arg(file_path);
+                let output = run_command(&mut command)?;
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            }
+        }
     }
 }
 

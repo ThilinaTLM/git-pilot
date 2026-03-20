@@ -5,6 +5,7 @@ use crossterm::event::KeyEvent;
 
 use crate::app::actions::{AppAction, map_key_event};
 use crate::app::state::{ActivePanel, AppState, RepositoryState};
+use crate::domain::status::FileSection;
 use crate::domain::branch::BranchName;
 use crate::domain::commit::CommitMessage;
 use crate::infrastructure::git_cli::{GitCliRepositoryService, GitRepositoryService};
@@ -67,9 +68,16 @@ impl AppController {
             AppAction::InsertChar(ch) => self.insert_char(ch),
             AppAction::Backspace => self.backspace(),
             AppAction::InsertNewline => self.insert_newline(),
+            AppAction::ScrollDiffDown => {
+                self.state.diff_scroll = self.state.diff_scroll.saturating_add(5);
+            }
+            AppAction::ScrollDiffUp => {
+                self.state.diff_scroll = self.state.diff_scroll.saturating_sub(5);
+            }
         }
 
         self.state.sync_selection();
+        self.refresh_diff();
         Ok(())
     }
 
@@ -108,6 +116,13 @@ impl AppController {
     }
 
     fn stage_selected(&mut self) -> Result<()> {
+        let section = self
+            .state
+            .selected_file_section()
+            .ok_or_else(|| anyhow!("no file selected"))?;
+        if section == FileSection::Staged {
+            return Ok(());
+        }
         let repo_path = self
             .state
             .selected_repo_path()
@@ -123,6 +138,13 @@ impl AppController {
     }
 
     fn unstage_selected(&mut self) -> Result<()> {
+        let section = self
+            .state
+            .selected_file_section()
+            .ok_or_else(|| anyhow!("no file selected"))?;
+        if section != FileSection::Staged {
+            return Ok(());
+        }
         let repo_path = self
             .state
             .selected_repo_path()
@@ -242,6 +264,32 @@ impl AppController {
     fn insert_newline(&mut self) {
         if matches!(self.state.active_panel, ActivePanel::Commit) {
             self.state.commit_message_input.push('\n');
+        }
+    }
+
+    fn refresh_diff(&mut self) {
+        let Some(repo_path) = self.state.selected_repo_path() else {
+            self.state.diff_content = None;
+            return;
+        };
+        let Some(entry) = self.state.selected_file_entry().cloned() else {
+            self.state.diff_content = None;
+            return;
+        };
+        let Some(file_path) = self
+            .state
+            .selected_repo_ref()
+            .and_then(|repo| repo.status_files.get(entry.file_index))
+            .map(|f| f.path.clone())
+        else {
+            self.state.diff_content = None;
+            return;
+        };
+
+        match self.git.diff_file(&repo_path, &file_path, entry.section) {
+            Ok(diff) if diff.is_empty() => self.state.diff_content = None,
+            Ok(diff) => self.state.diff_content = Some(diff),
+            Err(_) => self.state.diff_content = None,
         }
     }
 }

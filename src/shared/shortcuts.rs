@@ -8,7 +8,7 @@ pub struct ShortcutEntry {
     pub description: &'static str,
 }
 
-pub const SHORT_HELP: &str = "? help  q quit  h/l repos  j/k files  s/u stage  S/U all  b switch  n branch  c commit  r refresh";
+pub const SHORT_HELP: &str = "? help  q quit  h/l repos  j/k files  J/K scroll diff  s/u stage  S/U all  b switch  n branch  c commit  r refresh";
 
 const GLOBAL_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
@@ -41,6 +41,14 @@ const NAVIGATION_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
         keys: "k / Up",
         description: "select previous changed file or branch",
+    },
+    ShortcutEntry {
+        keys: "J / Ctrl+d",
+        description: "scroll diff preview down",
+    },
+    ShortcutEntry {
+        keys: "K / Ctrl+u",
+        description: "scroll diff preview up",
     },
 ];
 

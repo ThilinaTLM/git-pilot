@@ -1,5 +1,12 @@
 use std::path::PathBuf;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileSection {
+    Staged,
+    Unstaged,
+    Untracked,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChangedFile {
     pub path: PathBuf,

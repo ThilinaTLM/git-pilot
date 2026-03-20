@@ -26,6 +26,8 @@ pub enum AppAction {
     InsertChar(char),
     Backspace,
     InsertNewline,
+    ScrollDiffDown,
+    ScrollDiffUp,
 }
 
 pub fn map_key_event(active_panel: &ActivePanel, key_event: KeyEvent) -> AppAction {
@@ -38,6 +40,15 @@ pub fn map_key_event(active_panel: &ActivePanel, key_event: KeyEvent) -> AppActi
 }
 
 fn map_normal_mode_key(key_event: KeyEvent) -> AppAction {
+    // Ctrl+d / Ctrl+u for diff scrolling
+    if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+        return match key_event.code {
+            KeyCode::Char('d') => AppAction::ScrollDiffDown,
+            KeyCode::Char('u') => AppAction::ScrollDiffUp,
+            _ => AppAction::Noop,
+        };
+    }
+
     match key_event.code {
         KeyCode::Char('q') => AppAction::Quit,
         KeyCode::Char('r') => AppAction::RefreshRepos,
@@ -46,6 +57,8 @@ fn map_normal_mode_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Char('l') | KeyCode::Right => AppAction::SelectNextRepo,
         KeyCode::Char('j') | KeyCode::Down => AppAction::SelectNextFile,
         KeyCode::Char('k') | KeyCode::Up => AppAction::SelectPreviousFile,
+        KeyCode::Char('J') => AppAction::ScrollDiffDown,
+        KeyCode::Char('K') => AppAction::ScrollDiffUp,
         KeyCode::Char('s') => AppAction::StageSelected,
         KeyCode::Char('u') => AppAction::UnstageSelected,
         KeyCode::Char('S') => AppAction::StageAll,

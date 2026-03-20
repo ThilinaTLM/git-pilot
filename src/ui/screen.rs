@@ -1,15 +1,18 @@
 use ratatui::Frame;
+use ratatui::widgets::Block;
 
 use crate::app::state::{ActivePanel, AppState};
-use crate::ui::{branch_panel, commit_panel, help, layout, status_list, tabs};
+use crate::ui::{branch_panel, commit_panel, diff_panel, help, layout, status_list, tabs, theme};
 
 pub fn render(frame: &mut Frame, state: &AppState) {
     let area = frame.area();
+    frame.render_widget(Block::default().style(theme::screen_style()), area);
     let screen = layout::build_layout(area);
 
     tabs::render(frame, screen.tabs, state);
-    branch_panel::render_summary(frame, screen.content_left, state);
-    status_list::render(frame, screen.content_right, state);
+    branch_panel::render_status_bar(frame, screen.status_bar, state);
+    status_list::render(frame, screen.file_list, state);
+    diff_panel::render(frame, screen.diff_preview, state);
     help::render_footer(frame, screen.footer, state);
 
     if state.show_help {
