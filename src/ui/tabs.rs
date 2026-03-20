@@ -1,30 +1,30 @@
 use ratatui::prelude::*;
-use ratatui::widgets::Tabs;
+use ratatui::widgets::Paragraph;
 
 use crate::app::state::AppState;
 use crate::ui::theme;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
-    let titles = if state.repos.is_empty() {
-        vec![Line::from("No repos")]
+    let mut spans: Vec<Span> = Vec::new();
+
+    if state.repos.is_empty() {
+        spans.push(Span::styled("No repos", theme::muted_text_style()));
     } else {
-        state
-            .repos
-            .iter()
-            .map(|repo| Line::from(repo.summary.name.clone()))
-            .collect::<Vec<_>>()
-    };
+        for (i, repo) in state.repos.iter().enumerate() {
+            if i > 0 {
+                spans.push(Span::styled("  ", theme::muted_text_style()));
+            }
+            let is_selected = i == state.selected_repo.min(state.repos.len().saturating_sub(1));
+            let style = if is_selected {
+                theme::repo_pill_active_style()
+            } else {
+                theme::repo_pill_inactive_style()
+            };
+            spans.push(Span::styled(format!(" {} ", repo.summary.name), style));
+        }
+    }
 
-    let rule = theme::tabs_rule_block();
-    let inner = rule.inner(area);
-    frame.render_widget(rule, area);
-
-    let tabs = Tabs::new(titles)
-        .style(theme::inactive_tab_style())
-        .select(state.selected_repo.min(state.repos.len().saturating_sub(1)))
-        .highlight_style(theme::active_tab_style())
-        .divider(" ")
-        .padding(" ", " ");
-
-    frame.render_widget(tabs, inner);
+    let line = Line::from(spans);
+    let paragraph = Paragraph::new(line);
+    frame.render_widget(paragraph, area);
 }

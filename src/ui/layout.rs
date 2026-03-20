@@ -3,9 +3,10 @@ use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use crate::ui::theme;
 
 pub struct ScreenLayout {
-    pub tabs: Rect,
-    pub view_tabs: Rect,
-    pub status_bar: Rect,
+    pub header_row1: Rect,
+    pub header_row2: Rect,
+    pub header_row3: Rect,
+    pub header_rule: Rect,
     pub view_area: Rect,
     pub footer: Rect,
 }
@@ -18,12 +19,10 @@ pub fn build_layout(area: Rect) -> ScreenLayout {
     let vertical = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),                  // tabs
-            Constraint::Length(theme::SECTION_GAP), // gap
-            Constraint::Length(1),                  // view_tabs
-            Constraint::Length(theme::SECTION_GAP), // gap
-            Constraint::Length(1),                  // status_bar
-            Constraint::Length(theme::SECTION_GAP), // gap
+            Constraint::Length(1),                  // row1: repo pill tabs
+            Constraint::Length(1),                  // row2: summary line
+            Constraint::Length(1),                  // row3: view tabs
+            Constraint::Length(1),                  // horizontal rule
             Constraint::Min(8),                     // view_area
             Constraint::Length(theme::SECTION_GAP), // gap
             Constraint::Length(3),                  // footer
@@ -31,11 +30,12 @@ pub fn build_layout(area: Rect) -> ScreenLayout {
         .split(page);
 
     ScreenLayout {
-        tabs: vertical[0],
-        view_tabs: vertical[2],
-        status_bar: vertical[4],
-        view_area: vertical[6],
-        footer: vertical[8],
+        header_row1: vertical[0],
+        header_row2: vertical[1],
+        header_row3: vertical[2],
+        header_rule: vertical[3],
+        view_area: vertical[4],
+        footer: vertical[6],
     }
 }
 

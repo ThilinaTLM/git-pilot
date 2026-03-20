@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::domain::commit::LogEntry;
+use crate::domain::pull_request::PrInfo;
 use crate::domain::remote::RemoteInfo;
 use crate::domain::repo::{RepositoryDetails, RepositorySummary};
 use crate::domain::status::{ChangedFile, FileSection};
@@ -82,6 +83,7 @@ pub struct RepositoryState {
     pub status_files: Vec<ChangedFile>,
     pub log_entries: Vec<LogEntry>,
     pub remotes: Vec<RemoteInfo>,
+    pub pull_requests: Vec<PrInfo>,
     pub has_origin_remote: bool,
     pub load_error: Option<String>,
 }
@@ -99,6 +101,7 @@ impl RepositoryState {
             status_files: details.status.files,
             log_entries: details.log_entries,
             remotes: details.remotes,
+            pull_requests: Vec::new(),
             has_origin_remote,
             summary: details.summary,
             load_error: None,
@@ -113,9 +116,14 @@ impl RepositoryState {
             status_files: Vec::new(),
             log_entries: Vec::new(),
             remotes: Vec::new(),
+            pull_requests: Vec::new(),
             has_origin_remote: false,
             load_error: Some(error),
         }
+    }
+
+    pub fn latest_commit_timestamp(&self) -> i64 {
+        self.log_entries.first().map(|e| e.timestamp).unwrap_or(0)
     }
 }
 
@@ -232,9 +240,13 @@ impl Default for AppState {
 impl AppState {
     pub fn set_repositories(
         &mut self,
-        repos: Vec<RepositoryState>,
+        mut repos: Vec<RepositoryState>,
         selected_path: Option<PathBuf>,
     ) {
+        repos.sort_by(|a, b| {
+            b.latest_commit_timestamp()
+                .cmp(&a.latest_commit_timestamp())
+        });
         self.repos = repos;
         if self.repos.is_empty() {
             self.selected_repo = 0;
@@ -527,6 +539,7 @@ mod tests {
             status_files: Vec::new(),
             log_entries: Vec::new(),
             remotes: Vec::new(),
+            pull_requests: Vec::new(),
             has_origin_remote: false,
             load_error: None,
         }

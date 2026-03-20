@@ -4,7 +4,7 @@ use ratatui::widgets::Block;
 use crate::app::state::{AppState, Modal, View};
 use crate::ui::{
     branch_panel, branches_view, commit_panel, copilot_login_panel, create_repo_panel, diff_panel,
-    help, layout, log_view, remotes_view, status_list, tabs, theme, view_tabs,
+    help, layout, log_view, remotes_view, status_list, summary_line, tabs, theme, view_tabs,
 };
 
 pub fn render(frame: &mut Frame, state: &AppState) {
@@ -12,9 +12,10 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     frame.render_widget(Block::default().style(theme::screen_style()), area);
     let screen = layout::build_layout(area);
 
-    tabs::render(frame, screen.tabs, state);
-    view_tabs::render(frame, screen.view_tabs, state);
-    branch_panel::render_status_bar(frame, screen.status_bar, state);
+    tabs::render(frame, screen.header_row1, state);
+    summary_line::render(frame, screen.header_row2, state);
+    view_tabs::render(frame, screen.header_row3, state);
+    theme::render_header_rule(frame, screen.header_rule);
 
     match state.active_view {
         View::Changes => {

@@ -25,6 +25,10 @@ pub const GLOBAL_SHORTCUTS: &[ShortcutEntry] = &[
         description: "jump to Changes / Branches / Log / Remotes",
     },
     ShortcutEntry {
+        keys: "Alt+1..9",
+        description: "jump to repository by position",
+    },
+    ShortcutEntry {
         keys: "Left / h",
         description: "select previous repository tab",
     },

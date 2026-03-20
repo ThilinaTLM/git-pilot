@@ -10,6 +10,7 @@ pub mod log_view;
 pub mod remotes_view;
 pub mod screen;
 pub mod status_list;
+pub mod summary_line;
 pub mod tabs;
 pub mod theme;
 pub mod view_tabs;

@@ -39,11 +39,24 @@ pub fn footer_block() -> Block<'static> {
         .padding(Padding::horizontal(1))
 }
 
-pub fn tabs_rule_block() -> Block<'static> {
-    Block::default()
-        .style(surface_style())
-        .borders(Borders::BOTTOM)
-        .border_style(border_style())
+pub fn header_separator_style() -> Style {
+    Style::default().fg(BORDER).bg(SURFACE_BG)
+}
+
+pub fn render_header_rule(frame: &mut ratatui::Frame, area: Rect) {
+    let rule = "─".repeat(area.width as usize);
+    let line = Line::from(Span::styled(
+        rule,
+        Style::default().fg(BORDER).bg(SURFACE_BG),
+    ));
+    frame.render_widget(ratatui::widgets::Paragraph::new(line), area);
+}
+
+pub fn repo_name_style() -> Style {
+    Style::default()
+        .fg(TEXT_PRIMARY)
+        .bg(SURFACE_BG)
+        .add_modifier(Modifier::BOLD)
 }
 
 pub fn text_style() -> Style {
@@ -78,6 +91,17 @@ pub fn selected_list_style() -> Style {
         .fg(TEXT_PRIMARY)
         .bg(ACCENT_SOFT)
         .add_modifier(Modifier::BOLD)
+}
+
+pub fn repo_pill_active_style() -> Style {
+    Style::default()
+        .fg(TEXT_PRIMARY)
+        .bg(ACCENT_SOFT)
+        .add_modifier(Modifier::BOLD)
+}
+
+pub fn repo_pill_inactive_style() -> Style {
+    Style::default().fg(TEXT_MUTED).bg(SURFACE_BG)
 }
 
 pub fn active_tab_style() -> Style {

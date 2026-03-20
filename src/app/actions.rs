@@ -44,6 +44,7 @@ pub enum AppAction {
     GenerateCommitMessage,
     CopilotLogin,
     ToggleVisibility,
+    SelectRepo(usize),
     CreateRepoNextStep,
     CreateRepoPrevStep,
 }
@@ -78,6 +79,11 @@ fn map_modal_key(modal: &Modal, key_event: KeyEvent) -> AppAction {
 }
 
 fn map_global_key(key_event: KeyEvent) -> Option<AppAction> {
+    if key_event.modifiers.contains(KeyModifiers::ALT)
+        && let KeyCode::Char(c @ '1'..='9') = key_event.code
+    {
+        return Some(AppAction::SelectRepo((c as usize) - ('1' as usize)));
+    }
     match key_event.code {
         KeyCode::Char('q') => Some(AppAction::Quit),
         KeyCode::Char('?') => Some(AppAction::ToggleHelp),

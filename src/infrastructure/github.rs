@@ -2,8 +2,9 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Result, anyhow};
+use serde::Deserialize;
 
-use crate::domain::pull_request::{CreatePrParams, PrInfo};
+use crate::domain::pull_request::{CreatePrParams, PrInfo, PrState};
 use crate::domain::remote::{CreateRepoParams, RepoVisibility};
 use crate::infrastructure::process::run_command;
 
@@ -62,4 +63,51 @@ impl GhCliGitHubService {
         }
         Ok(url)
     }
+
+    pub fn list_prs(&self, repo_path: &Path) -> Result<Vec<PrInfo>> {
+        let mut command = Command::new("gh");
+        command
+            .current_dir(repo_path)
+            .arg("pr")
+            .arg("list")
+            .arg("--json")
+            .arg("number,title,state,url,headRefName")
+            .arg("--state")
+            .arg("open")
+            .arg("--limit")
+            .arg("50");
+
+        let output = match run_command(&mut command) {
+            Ok(o) => o,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        let raw = String::from_utf8_lossy(&output.stdout);
+        let items: Vec<GhPrJson> = serde_json::from_str(&raw).unwrap_or_default();
+        Ok(items
+            .into_iter()
+            .map(|p| PrInfo {
+                number: p.number,
+                title: p.title,
+                state: match p.state.to_uppercase().as_str() {
+                    "MERGED" => PrState::Merged,
+                    "CLOSED" => PrState::Closed,
+                    _ => PrState::Open,
+                },
+                url: p.url,
+                head_branch: p.head_ref_name,
+                checks_passed: None,
+            })
+            .collect())
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GhPrJson {
+    number: u32,
+    title: String,
+    state: String,
+    url: String,
+    head_ref_name: String,
 }

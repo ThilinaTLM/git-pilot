@@ -6,6 +6,7 @@ pub struct LogEntry {
     pub subject: String,
     pub author: String,
     pub date: String,
+    pub timestamp: i64,
     pub full_message: String,
 }
 

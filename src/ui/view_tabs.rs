@@ -14,19 +14,19 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let mut spans = Vec::new();
     for (i, (key, label, view)) in views.iter().enumerate() {
         if i > 0 {
-            spans.push(Span::styled("  ", theme::muted_text_style()));
+            spans.push(Span::styled(" │ ", theme::header_separator_style()));
         }
 
         let is_active = state.active_view == *view;
 
         if is_active {
             spans.push(Span::styled(
-                format!("{key} {label}"),
-                theme::accent_text_style(),
+                format!(" {key} {label} "),
+                theme::active_tab_style(),
             ));
         } else {
             spans.push(Span::styled(
-                format!("{key} {label}"),
+                format!(" {key} {label} "),
                 theme::muted_text_style(),
             ));
         }

@@ -171,6 +171,7 @@ impl AppController {
             }
             AppAction::OpenCreateRepo => self.open_create_repo()?,
             AppAction::ToggleVisibility => self.toggle_repo_visibility(),
+            AppAction::SelectRepo(idx) => self.select_repo_by_index(idx),
             AppAction::CreateRepoNextStep => self.create_repo_advance()?,
             AppAction::CreateRepoPrevStep => self.create_repo_go_back(),
         }
@@ -360,16 +361,31 @@ impl AppController {
         Ok(())
     }
 
+    fn select_repo_by_index(&mut self, idx: usize) {
+        if idx < self.state.repos.len() {
+            self.state.selected_repo = idx;
+            self.state.selected_file = 0;
+            self.state.selected_branch = self.state.current_branch_index().unwrap_or(0);
+            self.state.diff_content = None;
+            self.state.diff_scroll = 0;
+        }
+    }
+
     fn refresh_repositories(&mut self) -> Result<()> {
         let selected_path = self.state.selected_repo_path();
         let summaries = self.discovery.discover(&self.root, self.max_depth)?;
-        let repos = summaries
+        let repos: Vec<RepositoryState> = summaries
             .into_iter()
-            .map(|summary| match self.git.load_repository(&summary) {
-                Ok(details) => RepositoryState::from_details(details),
-                Err(error) => RepositoryState::from_error(summary, error.to_string()),
+            .map(|summary| {
+                let path = summary.path.clone();
+                let mut repo_state = match self.git.load_repository(&summary) {
+                    Ok(details) => RepositoryState::from_details(details),
+                    Err(error) => RepositoryState::from_error(summary, error.to_string()),
+                };
+                repo_state.pull_requests = self.github.list_prs(&path).unwrap_or_default();
+                repo_state
             })
-            .collect::<Vec<_>>();
+            .collect();
 
         self.state.set_repositories(repos, selected_path);
         if self.state.repos.is_empty() {
@@ -389,8 +405,9 @@ impl AppController {
             .map(|repo| repo.summary.clone())
             .ok_or_else(|| anyhow!("no repository selected"))?;
         let details = self.git.load_repository(&summary)?;
-        self.state
-            .replace_selected_repository(RepositoryState::from_details(details));
+        let mut repo_state = RepositoryState::from_details(details);
+        repo_state.pull_requests = self.github.list_prs(&summary.path).unwrap_or_default();
+        self.state.replace_selected_repository(repo_state);
         Ok(())
     }
 

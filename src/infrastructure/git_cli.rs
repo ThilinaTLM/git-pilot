@@ -180,7 +180,7 @@ impl GitRepositoryService for GitCliRepositoryService {
         let mut command = base_git_command(repo_path);
         command
             .arg("log")
-            .arg("--format=%h%x00%s%x00%an%x00%ar%x00%B%x00")
+            .arg("--format=%h%x00%s%x00%an%x00%ar%x00%at%x00%B%x00")
             .arg(format!("-n{limit}"))
             .arg("-z");
         let output = run_command(&mut command)?;
@@ -264,12 +264,9 @@ impl GitCliRepositoryService {
 fn parse_log_output(raw: &str) -> Result<Vec<LogEntry>> {
     let mut entries = Vec::new();
     // Records are separated by NUL. Each record has fields separated by NUL too.
-    // Format: hash\0subject\0author\0date\0full_message\0 (then -z adds another \0 between records)
+    // Format: hash\0subject\0author\0date\0timestamp\0full_message\0 (then -z adds another \0 between records)
     let records: Vec<&str> = raw.split('\0').collect();
-    // We have groups of 6 fields (hash, subject, author, date, full_message, empty-between-records)
-    // But with -z, the separator between records is \0, so we get: h\0s\0a\0d\0msg\0\0h\0s\0a\0d\0msg\0\0
-    // Actually the format produces: hash\0subject\0author\0date\0body\0 per record, and -z separates records with \0
-    // So we get fields in groups of 5, with possible empty strings between records
+    // We get fields in groups of 6, with possible empty strings between records
     let fields: Vec<&str> = records
         .iter()
         .map(|s| s.trim())
@@ -277,20 +274,22 @@ fn parse_log_output(raw: &str) -> Result<Vec<LogEntry>> {
         .collect();
 
     let mut i = 0;
-    while i + 4 < fields.len() {
+    while i + 5 < fields.len() {
         let hash = fields[i].to_string();
         let subject = fields[i + 1].to_string();
         let author = fields[i + 2].to_string();
         let date = fields[i + 3].to_string();
-        let full_message = fields[i + 4].to_string();
+        let timestamp = fields[i + 4].parse::<i64>().unwrap_or(0);
+        let full_message = fields[i + 5].to_string();
         entries.push(LogEntry {
             hash,
             subject,
             author,
             date,
+            timestamp,
             full_message,
         });
-        i += 5;
+        i += 6;
     }
 
     Ok(entries)
