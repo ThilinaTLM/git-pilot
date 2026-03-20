@@ -39,14 +39,12 @@ pub fn render_overlay(frame: &mut Frame, area: Rect) {
 fn help_text() -> Text<'static> {
     let mut lines = Vec::new();
 
-    lines.push(Line::from(vec![
-        Span::styled(
-            "Press ? again to close this view.",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]));
+    lines.push(Line::from(vec![Span::styled(
+        "Press ? again to close this view.",
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    )]));
     lines.push(Line::default());
 
     for section in HELP_SECTIONS {
