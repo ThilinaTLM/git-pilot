@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow};
 
 use crate::domain::branch::{BranchInfo, BranchName};
-use crate::domain::commit::CommitMessage;
+use crate::domain::commit::{CommitMessage, LogEntry};
+use crate::domain::remote::RemoteInfo;
 use crate::domain::repo::{RepositoryDetails, RepositorySummary};
 use crate::domain::status::{ChangedFile, FileSection, RepositoryStatus};
 use crate::infrastructure::process::{base_git_command, run_command};
@@ -25,6 +26,9 @@ pub trait GitRepositoryService {
     fn diff_staged_stat(&self, repo_path: &Path) -> Result<String>;
     fn diff_staged_file_names(&self, repo_path: &Path) -> Result<Vec<String>>;
     fn diff_staged_file(&self, repo_path: &Path, file_path: &str) -> Result<String>;
+    fn log_entries(&self, repo_path: &Path, limit: usize) -> Result<Vec<LogEntry>>;
+    fn list_remotes(&self, repo_path: &Path) -> Result<Vec<RemoteInfo>>;
+    fn has_remote(&self, repo_path: &Path, name: &str) -> bool;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -35,12 +39,16 @@ impl GitRepositoryService for GitCliRepositoryService {
         let current_branch = self.current_branch(&summary.path)?;
         let branches = self.branches(&summary.path, current_branch.as_deref())?;
         let status = self.status(&summary.path)?;
+        let log_entries = self.log_entries(&summary.path, 100).unwrap_or_default();
+        let remotes = self.list_remotes(&summary.path).unwrap_or_default();
 
         Ok(RepositoryDetails {
             summary: summary.clone(),
             current_branch,
             branches,
             status,
+            log_entries,
+            remotes,
         })
     }
 
@@ -167,6 +175,32 @@ impl GitRepositoryService for GitCliRepositoryService {
             }
         }
     }
+
+    fn log_entries(&self, repo_path: &Path, limit: usize) -> Result<Vec<LogEntry>> {
+        let mut command = base_git_command(repo_path);
+        command
+            .arg("log")
+            .arg("--format=%h%x00%s%x00%an%x00%ar%x00%B%x00")
+            .arg(format!("-n{limit}"))
+            .arg("-z");
+        let output = run_command(&mut command)?;
+        let raw = String::from_utf8_lossy(&output.stdout);
+        parse_log_output(&raw)
+    }
+
+    fn list_remotes(&self, repo_path: &Path) -> Result<Vec<RemoteInfo>> {
+        let mut command = base_git_command(repo_path);
+        command.arg("remote").arg("-v");
+        let output = run_command(&mut command)?;
+        let raw = String::from_utf8_lossy(&output.stdout);
+        Ok(parse_remote_output(&raw))
+    }
+
+    fn has_remote(&self, repo_path: &Path, name: &str) -> bool {
+        self.list_remotes(repo_path)
+            .map(|remotes| remotes.iter().any(|r| r.name == name))
+            .unwrap_or(false)
+    }
 }
 
 impl GitCliRepositoryService {
@@ -225,6 +259,83 @@ impl GitCliRepositoryService {
         let output = run_command(&mut command)?;
         parse_status_output(&output.stdout)
     }
+}
+
+fn parse_log_output(raw: &str) -> Result<Vec<LogEntry>> {
+    let mut entries = Vec::new();
+    // Records are separated by NUL. Each record has fields separated by NUL too.
+    // Format: hash\0subject\0author\0date\0full_message\0 (then -z adds another \0 between records)
+    let records: Vec<&str> = raw.split('\0').collect();
+    // We have groups of 6 fields (hash, subject, author, date, full_message, empty-between-records)
+    // But with -z, the separator between records is \0, so we get: h\0s\0a\0d\0msg\0\0h\0s\0a\0d\0msg\0\0
+    // Actually the format produces: hash\0subject\0author\0date\0body\0 per record, and -z separates records with \0
+    // So we get fields in groups of 5, with possible empty strings between records
+    let fields: Vec<&str> = records
+        .iter()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let mut i = 0;
+    while i + 4 < fields.len() {
+        let hash = fields[i].to_string();
+        let subject = fields[i + 1].to_string();
+        let author = fields[i + 2].to_string();
+        let date = fields[i + 3].to_string();
+        let full_message = fields[i + 4].to_string();
+        entries.push(LogEntry {
+            hash,
+            subject,
+            author,
+            date,
+            full_message,
+        });
+        i += 5;
+    }
+
+    Ok(entries)
+}
+
+fn parse_remote_output(raw: &str) -> Vec<RemoteInfo> {
+    use std::collections::HashMap;
+    let mut fetch_map: HashMap<String, String> = HashMap::new();
+    let mut push_map: HashMap<String, String> = HashMap::new();
+
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // Format: name\turl (fetch|push)
+        let parts: Vec<&str> = line.splitn(2, '\t').collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        let name = parts[0].to_string();
+        let rest = parts[1];
+        if let Some(url) = rest.strip_suffix(" (fetch)") {
+            fetch_map.insert(name, url.to_string());
+        } else if let Some(url) = rest.strip_suffix(" (push)") {
+            push_map.insert(name, url.to_string());
+        }
+    }
+
+    let mut names: Vec<String> = fetch_map.keys().chain(push_map.keys()).cloned().collect();
+    names.sort();
+    names.dedup();
+
+    names
+        .into_iter()
+        .map(|name| {
+            let fetch_url = fetch_map.get(&name).cloned().unwrap_or_default();
+            let push_url = push_map.get(&name).cloned().unwrap_or(fetch_url.clone());
+            RemoteInfo {
+                name,
+                fetch_url,
+                push_url,
+            }
+        })
+        .collect()
 }
 
 pub fn parse_status_output(raw: &[u8]) -> Result<RepositoryStatus> {

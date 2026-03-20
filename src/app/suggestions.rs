@@ -1,4 +1,4 @@
-use crate::app::state::{AppState, Modal, View};
+use crate::app::state::{AppState, CreateRepoStep, Modal, View};
 use crate::domain::status::FileSection;
 
 pub struct Suggestion {
@@ -51,6 +51,7 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                 key_hint: "Esc",
                 label: "cancel",
             }],
+            Modal::CreateRepo(ref step) => compute_create_repo_suggestions(step),
             Modal::None => vec![],
         };
     }
@@ -58,6 +59,8 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
     match state.active_view {
         View::Changes => compute_changes_suggestions(state),
         View::Branches => compute_branches_suggestions(state),
+        View::Log => compute_log_suggestions(state),
+        View::Remotes => compute_remotes_suggestions(state),
     }
 }
 
@@ -109,6 +112,15 @@ fn compute_changes_suggestions(state: &AppState) -> Vec<Suggestion> {
         });
     }
 
+    if let Some(repo) = state.selected_repo_ref()
+        && !repo.has_origin_remote
+    {
+        suggestions.push(Suggestion {
+            key_hint: "R",
+            label: "create repo",
+        });
+    }
+
     suggestions.push(Suggestion {
         key_hint: "?",
         label: "help",
@@ -139,10 +151,102 @@ fn compute_branches_suggestions(state: &AppState) -> Vec<Suggestion> {
         key_hint: "n",
         label: "new branch",
     });
+
+    if let Some(repo) = state.selected_repo_ref()
+        && !repo.has_origin_remote
+    {
+        suggestions.push(Suggestion {
+            key_hint: "R",
+            label: "create repo",
+        });
+    }
+
     suggestions.push(Suggestion {
         key_hint: "?",
         label: "help",
     });
 
     suggestions
+}
+
+fn compute_log_suggestions(_state: &AppState) -> Vec<Suggestion> {
+    vec![
+        Suggestion {
+            key_hint: "j/k",
+            label: "navigate",
+        },
+        Suggestion {
+            key_hint: "Ctrl+d/u",
+            label: "scroll detail",
+        },
+        Suggestion {
+            key_hint: "?",
+            label: "help",
+        },
+    ]
+}
+
+fn compute_remotes_suggestions(state: &AppState) -> Vec<Suggestion> {
+    let mut suggestions = Vec::new();
+
+    if let Some(repo) = state.selected_repo_ref() {
+        if !repo.remotes.is_empty() {
+            suggestions.push(Suggestion {
+                key_hint: "j/k",
+                label: "navigate",
+            });
+        }
+        if !repo.has_origin_remote {
+            suggestions.push(Suggestion {
+                key_hint: "R",
+                label: "create repo",
+            });
+        }
+    }
+
+    suggestions.push(Suggestion {
+        key_hint: "?",
+        label: "help",
+    });
+
+    suggestions
+}
+
+fn compute_create_repo_suggestions(step: &CreateRepoStep) -> Vec<Suggestion> {
+    match step {
+        CreateRepoStep::Owner | CreateRepoStep::RepoName => vec![
+            Suggestion {
+                key_hint: "Enter",
+                label: "next",
+            },
+            Suggestion {
+                key_hint: "Esc",
+                label: "back",
+            },
+        ],
+        CreateRepoStep::Visibility => vec![
+            Suggestion {
+                key_hint: "Space",
+                label: "toggle",
+            },
+            Suggestion {
+                key_hint: "Enter",
+                label: "next",
+            },
+            Suggestion {
+                key_hint: "Esc",
+                label: "back",
+            },
+        ],
+        CreateRepoStep::Confirm => vec![
+            Suggestion {
+                key_hint: "Enter",
+                label: "create",
+            },
+            Suggestion {
+                key_hint: "Esc",
+                label: "back",
+            },
+        ],
+    }
 }

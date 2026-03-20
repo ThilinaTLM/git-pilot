@@ -1,8 +1,11 @@
 use std::path::Path;
+use std::process::Command;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 
 use crate::domain::pull_request::{CreatePrParams, PrInfo};
+use crate::domain::remote::{CreateRepoParams, RepoVisibility};
+use crate::infrastructure::process::run_command;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MergeStrategy {
@@ -23,4 +26,40 @@ pub trait GitHubService {
     fn list_prs(&self, repo_path: &Path) -> Result<Vec<PrInfo>>;
     fn pr_checks(&self, repo_path: &Path, pr_number: u32) -> Result<Vec<CheckRun>>;
     fn merge_pr(&self, repo_path: &Path, pr_number: u32, strategy: &MergeStrategy) -> Result<()>;
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GhCliGitHubService;
+
+impl GhCliGitHubService {
+    pub fn check_gh_auth(&self) -> Result<()> {
+        let mut command = Command::new("gh");
+        command.arg("auth").arg("status");
+        run_command(&mut command)?;
+        Ok(())
+    }
+
+    pub fn create_repo(&self, params: &CreateRepoParams) -> Result<String> {
+        let visibility_flag = match params.visibility {
+            RepoVisibility::Public => "--public",
+            RepoVisibility::Private => "--private",
+        };
+        let repo_name = format!("{}/{}", params.owner, params.name);
+
+        let mut command = Command::new("gh");
+        command
+            .arg("repo")
+            .arg("create")
+            .arg(&repo_name)
+            .arg(visibility_flag)
+            .arg(format!("--source={}", params.source_dir.display()))
+            .arg(format!("--remote={}", params.remote_name));
+
+        let output = run_command(&mut command)?;
+        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if url.is_empty() {
+            return Err(anyhow!("gh repo create succeeded but returned no URL"));
+        }
+        Ok(url)
+    }
 }

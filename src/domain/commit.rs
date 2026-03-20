@@ -1,6 +1,15 @@
 use crate::domain::errors::ValidationError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LogEntry {
+    pub hash: String,
+    pub subject: String,
+    pub author: String,
+    pub date: String,
+    pub full_message: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommitMessage {
     raw: String,
 }

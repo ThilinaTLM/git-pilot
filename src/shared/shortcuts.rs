@@ -21,8 +21,8 @@ pub const GLOBAL_SHORTCUTS: &[ShortcutEntry] = &[
         description: "switch between views",
     },
     ShortcutEntry {
-        keys: "1 / 2",
-        description: "jump to Changes / Branches view",
+        keys: "1 / 2 / 3 / 4",
+        description: "jump to Changes / Branches / Log / Remotes",
     },
     ShortcutEntry {
         keys: "Left / h",
@@ -76,6 +76,10 @@ pub const CHANGES_SHORTCUTS: &[ShortcutEntry] = &[
         description: "create a new branch",
     },
     ShortcutEntry {
+        keys: "R",
+        description: "create a GitHub repository",
+    },
+    ShortcutEntry {
         keys: "PageDown / Ctrl+d",
         description: "scroll diff preview down",
     },
@@ -109,6 +113,44 @@ pub const BRANCHES_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
         keys: "m",
         description: "merge selected branch into current",
+    },
+    ShortcutEntry {
+        keys: "R",
+        description: "create a GitHub repository",
+    },
+];
+
+pub const LOG_SHORTCUTS: &[ShortcutEntry] = &[
+    ShortcutEntry {
+        keys: "Down / j",
+        description: "select next commit",
+    },
+    ShortcutEntry {
+        keys: "Up / k",
+        description: "select previous commit",
+    },
+    ShortcutEntry {
+        keys: "PageDown / Ctrl+d",
+        description: "scroll commit detail down",
+    },
+    ShortcutEntry {
+        keys: "PageUp / Ctrl+u",
+        description: "scroll commit detail up",
+    },
+];
+
+pub const REMOTES_SHORTCUTS: &[ShortcutEntry] = &[
+    ShortcutEntry {
+        keys: "Down / j",
+        description: "select next remote",
+    },
+    ShortcutEntry {
+        keys: "Up / k",
+        description: "select previous remote",
+    },
+    ShortcutEntry {
+        keys: "R",
+        description: "create a GitHub repository",
     },
 ];
 

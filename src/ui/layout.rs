@@ -63,6 +63,30 @@ pub fn split_branches_view(area: Rect) -> (Rect, Rect) {
     (horizontal[0], horizontal[2])
 }
 
+pub fn split_log_view(area: Rect) -> (Rect, Rect) {
+    let horizontal = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(40),
+            Constraint::Length(theme::PANE_GAP),
+            Constraint::Percentage(60),
+        ])
+        .split(area);
+    (horizontal[0], horizontal[2])
+}
+
+pub fn split_remotes_view(area: Rect) -> (Rect, Rect) {
+    let horizontal = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(40),
+            Constraint::Length(theme::PANE_GAP),
+            Constraint::Percentage(60),
+        ])
+        .split(area);
+    (horizontal[0], horizontal[2])
+}
+
 pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let vertical = Layout::default()
         .direction(Direction::Vertical)

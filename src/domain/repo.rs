@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
 use crate::domain::branch::BranchInfo;
+use crate::domain::commit::LogEntry;
+use crate::domain::remote::RemoteInfo;
 use crate::domain::status::RepositoryStatus;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -20,4 +22,6 @@ pub struct RepositoryDetails {
     pub current_branch: Option<String>,
     pub branches: Vec<BranchInfo>,
     pub status: RepositoryStatus,
+    pub log_entries: Vec<LogEntry>,
+    pub remotes: Vec<RemoteInfo>,
 }

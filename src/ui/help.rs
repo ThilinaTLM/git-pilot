@@ -110,6 +110,12 @@ fn help_text(state: &AppState) -> Text<'static> {
         View::Branches => {
             render_section(&mut lines, "Branches View", shortcuts::BRANCHES_SHORTCUTS);
         }
+        View::Log => {
+            render_section(&mut lines, "Log View", shortcuts::LOG_SHORTCUTS);
+        }
+        View::Remotes => {
+            render_section(&mut lines, "Remotes View", shortcuts::REMOTES_SHORTCUTS);
+        }
     }
 
     // Modal shortcuts

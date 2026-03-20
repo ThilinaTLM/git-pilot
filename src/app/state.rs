@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use crate::domain::commit::LogEntry;
+use crate::domain::remote::RemoteInfo;
 use crate::domain::repo::{RepositoryDetails, RepositorySummary};
 use crate::domain::status::{ChangedFile, FileSection};
 
@@ -8,15 +10,19 @@ pub enum View {
     #[default]
     Changes,
     Branches,
+    Log,
+    Remotes,
 }
 
 impl View {
-    pub const ALL: &[View] = &[View::Changes, View::Branches];
+    pub const ALL: &[View] = &[View::Changes, View::Branches, View::Log, View::Remotes];
 
     pub fn index(&self) -> usize {
         match self {
             View::Changes => 0,
             View::Branches => 1,
+            View::Log => 2,
+            View::Remotes => 3,
         }
     }
 
@@ -24,8 +30,26 @@ impl View {
         match self {
             View::Changes => "Changes",
             View::Branches => "Branches",
+            View::Log => "Log",
+            View::Remotes => "Remotes",
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CreateRepoStep {
+    Owner,
+    RepoName,
+    Visibility,
+    Confirm,
+}
+
+#[derive(Clone, Debug)]
+pub struct CreateRepoState {
+    pub step: CreateRepoStep,
+    pub owner_input: String,
+    pub repo_name_input: String,
+    pub is_public: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,6 +59,7 @@ pub enum Modal {
     BranchCreate,
     Commit,
     CopilotLogin,
+    CreateRepo(CreateRepoStep),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,11 +80,15 @@ pub struct RepositoryState {
     pub current_branch: Option<String>,
     pub branches: Vec<String>,
     pub status_files: Vec<ChangedFile>,
+    pub log_entries: Vec<LogEntry>,
+    pub remotes: Vec<RemoteInfo>,
+    pub has_origin_remote: bool,
     pub load_error: Option<String>,
 }
 
 impl RepositoryState {
     pub fn from_details(details: RepositoryDetails) -> Self {
+        let has_origin_remote = details.remotes.iter().any(|r| r.name == "origin");
         Self {
             branches: details
                 .branches
@@ -68,6 +97,9 @@ impl RepositoryState {
                 .collect(),
             current_branch: details.current_branch,
             status_files: details.status.files,
+            log_entries: details.log_entries,
+            remotes: details.remotes,
+            has_origin_remote,
             summary: details.summary,
             load_error: None,
         }
@@ -79,6 +111,9 @@ impl RepositoryState {
             current_branch: None,
             branches: Vec::new(),
             status_files: Vec::new(),
+            log_entries: Vec::new(),
+            remotes: Vec::new(),
+            has_origin_remote: false,
             load_error: Some(error),
         }
     }
@@ -147,6 +182,9 @@ pub struct AppState {
     pub selected_repo: usize,
     pub selected_file: usize,
     pub selected_branch: usize,
+    pub selected_log_entry: usize,
+    pub selected_remote: usize,
+    pub log_scroll: u16,
     pub active_view: View,
     pub modal: Modal,
     pub branch_name_input: String,
@@ -160,6 +198,7 @@ pub struct AppState {
     pub ai_loading: bool,
     pub device_code: Option<crate::app::background::DeviceCodeInfo>,
     pub copilot_authenticated: bool,
+    pub create_repo_state: Option<CreateRepoState>,
 }
 
 impl Default for AppState {
@@ -169,6 +208,9 @@ impl Default for AppState {
             selected_repo: 0,
             selected_file: 0,
             selected_branch: 0,
+            selected_log_entry: 0,
+            selected_remote: 0,
+            log_scroll: 0,
             active_view: View::default(),
             modal: Modal::None,
             branch_name_input: String::new(),
@@ -182,6 +224,7 @@ impl Default for AppState {
             ai_loading: false,
             device_code: None,
             copilot_authenticated: false,
+            create_repo_state: None,
         }
     }
 }
@@ -228,13 +271,19 @@ impl AppState {
             let grouped = GroupedFileList::build(&repo.status_files);
             let entry_len = grouped.entries.len();
             let branch_len = repo.branches.len();
+            let log_len = repo.log_entries.len();
+            let remote_len = repo.remotes.len();
             self.grouped_files = grouped;
             self.selected_file = self.selected_file.min(entry_len.saturating_sub(1));
             self.selected_branch = self.selected_branch.min(branch_len.saturating_sub(1));
+            self.selected_log_entry = self.selected_log_entry.min(log_len.saturating_sub(1));
+            self.selected_remote = self.selected_remote.min(remote_len.saturating_sub(1));
         } else {
             self.grouped_files = GroupedFileList::default();
             self.selected_file = 0;
             self.selected_branch = 0;
+            self.selected_log_entry = 0;
+            self.selected_remote = 0;
         }
     }
 
@@ -325,6 +374,46 @@ impl AppState {
         }
     }
 
+    pub fn select_next_log_entry(&mut self) {
+        if let Some(repo) = self.selected_repo_ref()
+            && !repo.log_entries.is_empty()
+        {
+            self.selected_log_entry = (self.selected_log_entry + 1) % repo.log_entries.len();
+        }
+    }
+
+    pub fn select_previous_log_entry(&mut self) {
+        if let Some(repo) = self.selected_repo_ref()
+            && !repo.log_entries.is_empty()
+        {
+            self.selected_log_entry = if self.selected_log_entry == 0 {
+                repo.log_entries.len() - 1
+            } else {
+                self.selected_log_entry - 1
+            };
+        }
+    }
+
+    pub fn select_next_remote(&mut self) {
+        if let Some(repo) = self.selected_repo_ref()
+            && !repo.remotes.is_empty()
+        {
+            self.selected_remote = (self.selected_remote + 1) % repo.remotes.len();
+        }
+    }
+
+    pub fn select_previous_remote(&mut self) {
+        if let Some(repo) = self.selected_repo_ref()
+            && !repo.remotes.is_empty()
+        {
+            self.selected_remote = if self.selected_remote == 0 {
+                repo.remotes.len() - 1
+            } else {
+                self.selected_remote - 1
+            };
+        }
+    }
+
     pub fn open_branch_switch(&mut self) {
         self.modal = Modal::BranchSwitch;
         self.selected_branch = self.current_branch_index().unwrap_or(0);
@@ -344,6 +433,7 @@ impl AppState {
         self.modal = Modal::None;
         self.branch_name_input.clear();
         self.commit_message_input.clear();
+        self.create_repo_state = None;
     }
 
     pub fn current_branch_index(&self) -> Option<usize> {
@@ -435,6 +525,9 @@ mod tests {
             current_branch: Some("main".to_string()),
             branches: vec!["main".to_string()],
             status_files: Vec::new(),
+            log_entries: Vec::new(),
+            remotes: Vec::new(),
+            has_origin_remote: false,
             load_error: None,
         }
     }

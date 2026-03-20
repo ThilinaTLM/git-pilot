@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::app::state::{Modal, View};
+use crate::app::state::{CreateRepoStep, Modal, View};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AppAction {
@@ -13,6 +13,12 @@ pub enum AppAction {
     SelectPreviousFile,
     SelectNextBranch,
     SelectPreviousBranch,
+    SelectNextLogEntry,
+    SelectPreviousLogEntry,
+    SelectNextRemote,
+    SelectPreviousRemote,
+    ScrollLogDown,
+    ScrollLogUp,
     StageSelected,
     UnstageSelected,
     StageAll,
@@ -21,6 +27,7 @@ pub enum AppAction {
     OpenBranchSwitch,
     OpenBranchCreate,
     OpenCommitPanel,
+    OpenCreateRepo,
     ConfirmModal,
     CloseModal,
     ToggleHelp,
@@ -36,6 +43,9 @@ pub enum AppAction {
     MergeBranch,
     GenerateCommitMessage,
     CopilotLogin,
+    ToggleVisibility,
+    CreateRepoNextStep,
+    CreateRepoPrevStep,
 }
 
 pub fn map_key_event(view: &View, modal: &Modal, key_event: KeyEvent) -> AppAction {
@@ -48,6 +58,8 @@ pub fn map_key_event(view: &View, modal: &Modal, key_event: KeyEvent) -> AppActi
     match view {
         View::Changes => map_changes_key(key_event),
         View::Branches => map_branches_key(key_event),
+        View::Log => map_log_key(key_event),
+        View::Remotes => map_remotes_key(key_event),
     }
 }
 
@@ -61,6 +73,7 @@ fn map_modal_key(modal: &Modal, key_event: KeyEvent) -> AppAction {
             KeyCode::Esc => AppAction::CloseModal,
             _ => AppAction::Noop,
         },
+        Modal::CreateRepo(step) => map_create_repo_key(step, key_event),
     }
 }
 
@@ -75,6 +88,8 @@ fn map_global_key(key_event: KeyEvent) -> Option<AppAction> {
         KeyCode::BackTab => Some(AppAction::PreviousView),
         KeyCode::Char('1') => Some(AppAction::SwitchView(View::Changes)),
         KeyCode::Char('2') => Some(AppAction::SwitchView(View::Branches)),
+        KeyCode::Char('3') => Some(AppAction::SwitchView(View::Log)),
+        KeyCode::Char('4') => Some(AppAction::SwitchView(View::Remotes)),
         _ => None,
     }
 }
@@ -100,6 +115,7 @@ fn map_changes_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Char('c') => AppAction::OpenCommitPanel,
         KeyCode::Char('b') => AppAction::OpenBranchSwitch,
         KeyCode::Char('n') => AppAction::OpenBranchCreate,
+        KeyCode::Char('R') => AppAction::OpenCreateRepo,
         KeyCode::PageDown => AppAction::ScrollDiffDown,
         KeyCode::PageUp => AppAction::ScrollDiffUp,
         _ => AppAction::Noop,
@@ -114,7 +130,62 @@ fn map_branches_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Char('n') => AppAction::OpenBranchCreate,
         KeyCode::Char('d') => AppAction::DeleteBranch,
         KeyCode::Char('m') => AppAction::MergeBranch,
+        KeyCode::Char('R') => AppAction::OpenCreateRepo,
         _ => AppAction::Noop,
+    }
+}
+
+fn map_log_key(key_event: KeyEvent) -> AppAction {
+    if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+        return match key_event.code {
+            KeyCode::Char('d') => AppAction::ScrollLogDown,
+            KeyCode::Char('u') => AppAction::ScrollLogUp,
+            _ => AppAction::Noop,
+        };
+    }
+
+    match key_event.code {
+        KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextLogEntry,
+        KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousLogEntry,
+        KeyCode::PageDown => AppAction::ScrollLogDown,
+        KeyCode::PageUp => AppAction::ScrollLogUp,
+        _ => AppAction::Noop,
+    }
+}
+
+fn map_remotes_key(key_event: KeyEvent) -> AppAction {
+    match key_event.code {
+        KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextRemote,
+        KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousRemote,
+        KeyCode::Char('R') => AppAction::OpenCreateRepo,
+        _ => AppAction::Noop,
+    }
+}
+
+fn map_create_repo_key(step: &CreateRepoStep, key_event: KeyEvent) -> AppAction {
+    match step {
+        CreateRepoStep::Owner | CreateRepoStep::RepoName => match key_event.code {
+            KeyCode::Esc => AppAction::CreateRepoPrevStep,
+            KeyCode::Enter => AppAction::CreateRepoNextStep,
+            KeyCode::Backspace => AppAction::Backspace,
+            KeyCode::Char(ch) if !key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                AppAction::InsertChar(ch)
+            }
+            _ => AppAction::Noop,
+        },
+        CreateRepoStep::Visibility => match key_event.code {
+            KeyCode::Esc => AppAction::CreateRepoPrevStep,
+            KeyCode::Enter => AppAction::CreateRepoNextStep,
+            KeyCode::Char(' ') | KeyCode::Char('j') | KeyCode::Char('k') => {
+                AppAction::ToggleVisibility
+            }
+            _ => AppAction::Noop,
+        },
+        CreateRepoStep::Confirm => match key_event.code {
+            KeyCode::Esc => AppAction::CreateRepoPrevStep,
+            KeyCode::Enter => AppAction::ConfirmModal,
+            _ => AppAction::Noop,
+        },
     }
 }
 

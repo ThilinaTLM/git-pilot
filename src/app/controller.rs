@@ -20,12 +20,14 @@ use crate::infrastructure::copilot::client::CopilotAiService;
 use crate::infrastructure::copilot::diff::prepare_diff_context;
 use crate::infrastructure::copilot::types::StoredAuth;
 use crate::infrastructure::git_cli::{GitCliRepositoryService, GitRepositoryService};
+use crate::infrastructure::github::GhCliGitHubService;
 use crate::infrastructure::repo_discovery::{RepositoryDiscovery, WalkDirRepositoryDiscovery};
 
 pub struct AppController {
     state: AppState,
     discovery: WalkDirRepositoryDiscovery,
     git: GitCliRepositoryService,
+    github: GhCliGitHubService,
     root: PathBuf,
     max_depth: usize,
     ai_service: Option<Arc<dyn AiService>>,
@@ -51,6 +53,7 @@ impl AppController {
             state: AppState::default(),
             discovery: WalkDirRepositoryDiscovery,
             git: GitCliRepositoryService,
+            github: GhCliGitHubService,
             root,
             max_depth: 3,
             ai_service,
@@ -156,6 +159,20 @@ impl AppController {
             AppAction::MergeBranch => self.merge_branch()?,
             AppAction::GenerateCommitMessage => self.generate_commit_message()?,
             AppAction::CopilotLogin => self.copilot_login(),
+            AppAction::SelectNextLogEntry => self.state.select_next_log_entry(),
+            AppAction::SelectPreviousLogEntry => self.state.select_previous_log_entry(),
+            AppAction::SelectNextRemote => self.state.select_next_remote(),
+            AppAction::SelectPreviousRemote => self.state.select_previous_remote(),
+            AppAction::ScrollLogDown => {
+                self.state.log_scroll = self.state.log_scroll.saturating_add(5);
+            }
+            AppAction::ScrollLogUp => {
+                self.state.log_scroll = self.state.log_scroll.saturating_sub(5);
+            }
+            AppAction::OpenCreateRepo => self.open_create_repo()?,
+            AppAction::ToggleVisibility => self.toggle_repo_visibility(),
+            AppAction::CreateRepoNextStep => self.create_repo_advance()?,
+            AppAction::CreateRepoPrevStep => self.create_repo_go_back(),
         }
 
         self.state.sync_selection();
@@ -228,6 +245,119 @@ impl AppController {
 
             let _ = sender.send(BackgroundResult::LoginCompleted(Ok(())));
         });
+    }
+
+    fn open_create_repo(&mut self) -> Result<()> {
+        if let Some(repo) = self.state.selected_repo_ref()
+            && repo.has_origin_remote
+        {
+            return Err(anyhow!("origin remote already exists"));
+        }
+        self.github.check_gh_auth()?;
+        let default_name = self
+            .state
+            .selected_repo_ref()
+            .map(|r| r.summary.name.clone())
+            .unwrap_or_default();
+        self.state.create_repo_state = Some(crate::app::state::CreateRepoState {
+            step: crate::app::state::CreateRepoStep::Owner,
+            owner_input: String::new(),
+            repo_name_input: default_name,
+            is_public: true,
+        });
+        self.state.modal = Modal::CreateRepo(crate::app::state::CreateRepoStep::Owner);
+        Ok(())
+    }
+
+    fn create_repo_advance(&mut self) -> Result<()> {
+        let Some(ref rs) = self.state.create_repo_state else {
+            return Ok(());
+        };
+        let next_step = match rs.step {
+            crate::app::state::CreateRepoStep::Owner => {
+                if rs.owner_input.trim().is_empty() {
+                    return Err(anyhow!("owner cannot be empty"));
+                }
+                crate::app::state::CreateRepoStep::RepoName
+            }
+            crate::app::state::CreateRepoStep::RepoName => {
+                if rs.repo_name_input.trim().is_empty() {
+                    return Err(anyhow!("repository name cannot be empty"));
+                }
+                crate::app::state::CreateRepoStep::Visibility
+            }
+            crate::app::state::CreateRepoStep::Visibility => {
+                crate::app::state::CreateRepoStep::Confirm
+            }
+            crate::app::state::CreateRepoStep::Confirm => {
+                return self.confirm_create_repo();
+            }
+        };
+        if let Some(ref mut rs) = self.state.create_repo_state {
+            rs.step = next_step.clone();
+        }
+        self.state.modal = Modal::CreateRepo(next_step);
+        Ok(())
+    }
+
+    fn create_repo_go_back(&mut self) {
+        let Some(ref rs) = self.state.create_repo_state else {
+            self.state.close_modal();
+            return;
+        };
+        let prev_step = match rs.step {
+            crate::app::state::CreateRepoStep::Owner => {
+                self.state.close_modal();
+                return;
+            }
+            crate::app::state::CreateRepoStep::RepoName => crate::app::state::CreateRepoStep::Owner,
+            crate::app::state::CreateRepoStep::Visibility => {
+                crate::app::state::CreateRepoStep::RepoName
+            }
+            crate::app::state::CreateRepoStep::Confirm => {
+                crate::app::state::CreateRepoStep::Visibility
+            }
+        };
+        if let Some(ref mut rs) = self.state.create_repo_state {
+            rs.step = prev_step.clone();
+        }
+        self.state.modal = Modal::CreateRepo(prev_step);
+    }
+
+    fn toggle_repo_visibility(&mut self) {
+        if let Some(ref mut rs) = self.state.create_repo_state {
+            rs.is_public = !rs.is_public;
+        }
+    }
+
+    fn confirm_create_repo(&mut self) -> Result<()> {
+        let rs = self
+            .state
+            .create_repo_state
+            .clone()
+            .ok_or_else(|| anyhow!("no create repo state"))?;
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+
+        let params = crate::domain::remote::CreateRepoParams {
+            owner: rs.owner_input.trim().to_string(),
+            name: rs.repo_name_input.trim().to_string(),
+            visibility: if rs.is_public {
+                crate::domain::remote::RepoVisibility::Public
+            } else {
+                crate::domain::remote::RepoVisibility::Private
+            },
+            source_dir: repo_path,
+            remote_name: "origin".to_string(),
+        };
+
+        let url = self.github.create_repo(&params)?;
+        self.state.close_modal();
+        self.reload_selected_repo()?;
+        self.state.set_info(format!("Created repository: {url}"));
+        Ok(())
     }
 
     fn refresh_repositories(&mut self) -> Result<()> {
@@ -394,6 +524,7 @@ impl AppController {
             Modal::BranchCreate => self.confirm_branch_create(),
             Modal::Commit => self.confirm_commit(),
             Modal::CopilotLogin => Ok(()),
+            Modal::CreateRepo(_) => self.confirm_create_repo(),
         }
     }
 
@@ -467,21 +598,47 @@ impl AppController {
     }
 
     fn insert_char(&mut self, ch: char) {
-        match self.state.modal {
+        match &self.state.modal {
             Modal::BranchCreate => self.state.branch_name_input.push(ch),
             Modal::Commit => self.state.commit_message_input.push(ch),
+            Modal::CreateRepo(step) => match step {
+                crate::app::state::CreateRepoStep::Owner => {
+                    if let Some(ref mut rs) = self.state.create_repo_state {
+                        rs.owner_input.push(ch);
+                    }
+                }
+                crate::app::state::CreateRepoStep::RepoName => {
+                    if let Some(ref mut rs) = self.state.create_repo_state {
+                        rs.repo_name_input.push(ch);
+                    }
+                }
+                _ => {}
+            },
             Modal::None | Modal::BranchSwitch | Modal::CopilotLogin => {}
         }
     }
 
     fn backspace(&mut self) {
-        match self.state.modal {
+        match &self.state.modal {
             Modal::BranchCreate => {
                 self.state.branch_name_input.pop();
             }
             Modal::Commit => {
                 self.state.commit_message_input.pop();
             }
+            Modal::CreateRepo(step) => match step {
+                crate::app::state::CreateRepoStep::Owner => {
+                    if let Some(ref mut rs) = self.state.create_repo_state {
+                        rs.owner_input.pop();
+                    }
+                }
+                crate::app::state::CreateRepoStep::RepoName => {
+                    if let Some(ref mut rs) = self.state.create_repo_state {
+                        rs.repo_name_input.pop();
+                    }
+                }
+                _ => {}
+            },
             Modal::None | Modal::BranchSwitch | Modal::CopilotLogin => {}
         }
     }
