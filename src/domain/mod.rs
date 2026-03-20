@@ -6,4 +6,5 @@ pub mod errors;
 pub mod pull_request;
 pub mod remote;
 pub mod repo;
+pub mod settings;
 pub mod status;

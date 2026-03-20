@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use crate::domain::commit::LogEntry;
 use crate::domain::pull_request::{PrCheckInfo, PrInfo};
 use crate::domain::remote::RemoteInfo;
+use crate::domain::remote::TrackingStatus;
 use crate::domain::repo::{RepositoryDetails, RepositorySummary};
+use crate::domain::settings::AppSettings;
 use crate::domain::status::{ChangedFile, FileSection};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -220,6 +222,9 @@ pub struct AppState {
     pub create_repo_state: Option<CreateRepoState>,
     pub pr_checks_cache: Vec<PrCheckInfo>,
     pub amend_mode: bool,
+    pub branch_tracking: Option<TrackingStatus>,
+    pub settings: AppSettings,
+    pub selected_settings_item: usize,
 }
 
 impl Default for AppState {
@@ -250,6 +255,9 @@ impl Default for AppState {
             create_repo_state: None,
             pr_checks_cache: Vec::new(),
             amend_mode: false,
+            branch_tracking: None,
+            settings: AppSettings::default(),
+            selected_settings_item: 0,
         }
     }
 }

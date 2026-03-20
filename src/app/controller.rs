@@ -13,6 +13,7 @@ use crate::domain::branch::BranchName;
 use crate::domain::commit::CommitMessage;
 use crate::domain::status::FileSection;
 use crate::infrastructure::ai::AiService;
+use crate::infrastructure::config;
 use crate::infrastructure::copilot::auth::{
     CopilotTokenManager, load_auth, poll_for_oauth_token, save_auth, start_device_flow,
 };
@@ -20,6 +21,7 @@ use crate::infrastructure::copilot::client::CopilotAiService;
 use crate::infrastructure::copilot::diff::prepare_diff_context;
 use crate::infrastructure::copilot::types::StoredAuth;
 use crate::infrastructure::git_cli::{GitCliRepositoryService, GitRepositoryService};
+use crate::infrastructure::git_remote::{GitCliRemoteService, GitRemoteService};
 use crate::infrastructure::github::GhCliGitHubService;
 use crate::infrastructure::repo_discovery::{RepositoryDiscovery, WalkDirRepositoryDiscovery};
 
@@ -27,6 +29,7 @@ pub struct AppController {
     state: AppState,
     discovery: WalkDirRepositoryDiscovery,
     git: GitCliRepositoryService,
+    remote: GitCliRemoteService,
     github: GhCliGitHubService,
     root: PathBuf,
     max_depth: usize,
@@ -53,6 +56,7 @@ impl AppController {
             state: AppState::default(),
             discovery: WalkDirRepositoryDiscovery,
             git: GitCliRepositoryService,
+            remote: GitCliRemoteService,
             github: GhCliGitHubService,
             root,
             max_depth: 3,
@@ -61,12 +65,23 @@ impl AppController {
             bg_receiver,
         };
         controller.state.copilot_authenticated = copilot_authenticated;
+        controller.state.settings = config::load_settings();
         controller.refresh_repositories()?;
+        controller.load_tracking_status();
         Ok(controller)
     }
 
     pub fn state(&self) -> &AppState {
         &self.state
+    }
+
+    pub fn auto_fetch(&mut self) {
+        if let Some(repo_path) = self.state.selected_repo_path()
+            && self.remote.fetch(&repo_path).is_ok()
+        {
+            let _ = self.reload_selected_repo();
+            self.load_tracking_status();
+        }
     }
 
     pub fn check_background_results(&mut self) {
@@ -191,6 +206,23 @@ impl AppController {
             AppAction::SelectRepo(idx) => self.select_repo_by_index(idx),
             AppAction::CreateRepoNextStep => self.create_repo_advance()?,
             AppAction::CreateRepoPrevStep => self.create_repo_go_back(),
+            AppAction::FetchRemote => self.fetch_remote()?,
+            AppAction::PushBranch => self.push_branch()?,
+            AppAction::PullBranch => self.pull_branch()?,
+            AppAction::ToggleAutoFetch => self.toggle_auto_fetch()?,
+            AppAction::IncreaseAutoFetchInterval => self.adjust_auto_fetch_interval(30)?,
+            AppAction::DecreaseAutoFetchInterval => self.adjust_auto_fetch_interval(-30)?,
+            AppAction::SelectNextSettingsItem => {
+                // Settings has: 0=auto_fetch toggle, 1=interval
+                self.state.selected_settings_item = (self.state.selected_settings_item + 1) % 2;
+            }
+            AppAction::SelectPreviousSettingsItem => {
+                self.state.selected_settings_item = if self.state.selected_settings_item == 0 {
+                    1
+                } else {
+                    self.state.selected_settings_item - 1
+                };
+            }
         }
 
         self.state.sync_selection();
@@ -378,6 +410,85 @@ impl AppController {
         Ok(())
     }
 
+    fn toggle_auto_fetch(&mut self) -> Result<()> {
+        self.state.settings.auto_fetch_enabled = !self.state.settings.auto_fetch_enabled;
+        config::save_settings(&self.state.settings)?;
+        let status = if self.state.settings.auto_fetch_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        };
+        self.state.set_info(format!("Auto-fetch {status}"));
+        Ok(())
+    }
+
+    fn adjust_auto_fetch_interval(&mut self, delta: i64) -> Result<()> {
+        let current = self.state.settings.auto_fetch_interval_secs as i64;
+        let new_val = (current + delta).clamp(30, 600) as u64;
+        self.state.settings.auto_fetch_interval_secs = new_val;
+        config::save_settings(&self.state.settings)?;
+        self.state
+            .set_info(format!("Auto-fetch interval: {new_val}s"));
+        Ok(())
+    }
+
+    fn fetch_remote(&mut self) -> Result<()> {
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+        self.remote.fetch(&repo_path)?;
+        self.reload_selected_repo()?;
+        self.load_tracking_status();
+        self.state.set_info("Fetched from remote");
+        Ok(())
+    }
+
+    fn push_branch(&mut self) -> Result<()> {
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+        let branch = self
+            .state
+            .selected_repo_ref()
+            .and_then(|r| r.current_branch.clone())
+            .ok_or_else(|| anyhow!("no current branch"))?;
+        self.remote.push(&repo_path, &branch)?;
+        self.reload_selected_repo()?;
+        self.load_tracking_status();
+        self.state.set_info(format!("Pushed {branch}"));
+        Ok(())
+    }
+
+    fn pull_branch(&mut self) -> Result<()> {
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+        self.remote.pull(&repo_path)?;
+        self.reload_selected_repo()?;
+        self.load_tracking_status();
+        self.state.set_info("Pulled from remote");
+        Ok(())
+    }
+
+    fn load_tracking_status(&mut self) {
+        let Some(repo_path) = self.state.selected_repo_path() else {
+            self.state.branch_tracking = None;
+            return;
+        };
+        let Some(branch) = self
+            .state
+            .selected_repo_ref()
+            .and_then(|r| r.current_branch.clone())
+        else {
+            self.state.branch_tracking = None;
+            return;
+        };
+        self.state.branch_tracking = self.remote.tracking_status(&repo_path, &branch).ok();
+    }
+
     fn open_pr_in_browser(&mut self) -> Result<()> {
         let repo = self
             .state
@@ -397,7 +508,8 @@ impl AppController {
             .arg(number.to_string())
             .arg("--web");
         crate::infrastructure::process::run_command(&mut command)?;
-        self.state.set_info(format!("Opened PR #{number} in browser"));
+        self.state
+            .set_info(format!("Opened PR #{number} in browser"));
         Ok(())
     }
 
@@ -708,8 +820,7 @@ impl AppController {
         self.reload_selected_repo()?;
         self.state.close_modal();
         let verb = if amend { "Amended" } else { "Committed" };
-        self.state
-            .set_info(format!("{verb} {}", message.subject()));
+        self.state.set_info(format!("{verb} {}", message.subject()));
         Ok(())
     }
 

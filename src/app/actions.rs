@@ -54,6 +54,14 @@ pub enum AppAction {
     SelectRepo(usize),
     CreateRepoNextStep,
     CreateRepoPrevStep,
+    FetchRemote,
+    PushBranch,
+    PullBranch,
+    ToggleAutoFetch,
+    IncreaseAutoFetchInterval,
+    DecreaseAutoFetchInterval,
+    SelectNextSettingsItem,
+    SelectPreviousSettingsItem,
 }
 
 pub fn map_key_event(view: &View, modal: &Modal, key_event: KeyEvent) -> AppAction {
@@ -146,6 +154,9 @@ fn map_branches_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Char('n') => AppAction::OpenBranchCreate,
         KeyCode::Char('d') => AppAction::DeleteBranch,
         KeyCode::Char('m') => AppAction::MergeBranch,
+        KeyCode::Char('f') => AppAction::FetchRemote,
+        KeyCode::Char('p') => AppAction::PushBranch,
+        KeyCode::Char('P') => AppAction::PullBranch,
         KeyCode::Char('R') => AppAction::OpenCreateRepo,
         _ => AppAction::Noop,
     }
@@ -191,8 +202,11 @@ fn map_pr_key(key_event: KeyEvent) -> AppAction {
 
 fn map_settings_key(key_event: KeyEvent) -> AppAction {
     match key_event.code {
-        KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextRemote,
-        KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousRemote,
+        KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextSettingsItem,
+        KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousSettingsItem,
+        KeyCode::Char(' ') | KeyCode::Enter => AppAction::ToggleAutoFetch,
+        KeyCode::Char('+') | KeyCode::Char('=') => AppAction::IncreaseAutoFetchInterval,
+        KeyCode::Char('-') => AppAction::DecreaseAutoFetchInterval,
         KeyCode::Char('R') => AppAction::OpenCreateRepo,
         _ => AppAction::Noop,
     }

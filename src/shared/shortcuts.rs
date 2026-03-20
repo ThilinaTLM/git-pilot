@@ -123,6 +123,18 @@ pub const BRANCHES_SHORTCUTS: &[ShortcutEntry] = &[
         description: "merge selected branch into current",
     },
     ShortcutEntry {
+        keys: "f",
+        description: "fetch from remote",
+    },
+    ShortcutEntry {
+        keys: "p",
+        description: "push current branch",
+    },
+    ShortcutEntry {
+        keys: "P",
+        description: "pull from remote",
+    },
+    ShortcutEntry {
         keys: "R",
         description: "create a GitHub repository",
     },
@@ -177,11 +189,19 @@ pub const PR_SHORTCUTS: &[ShortcutEntry] = &[
 pub const SETTINGS_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
         keys: "Down / j",
-        description: "select next remote",
+        description: "select next setting",
     },
     ShortcutEntry {
         keys: "Up / k",
-        description: "select previous remote",
+        description: "select previous setting",
+    },
+    ShortcutEntry {
+        keys: "Space / Enter",
+        description: "toggle auto-fetch",
+    },
+    ShortcutEntry {
+        keys: "+ / -",
+        description: "adjust auto-fetch interval",
     },
     ShortcutEntry {
         keys: "R",

@@ -216,21 +216,28 @@ fn compute_pr_suggestions(state: &AppState) -> Vec<Suggestion> {
 }
 
 fn compute_settings_suggestions(state: &AppState) -> Vec<Suggestion> {
-    let mut suggestions = Vec::new();
+    let mut suggestions = vec![
+        Suggestion {
+            key_hint: "j/k",
+            label: "navigate",
+        },
+        Suggestion {
+            key_hint: "Space",
+            label: "toggle",
+        },
+        Suggestion {
+            key_hint: "+/-",
+            label: "adjust",
+        },
+    ];
 
-    if let Some(repo) = state.selected_repo_ref() {
-        if !repo.remotes.is_empty() {
-            suggestions.push(Suggestion {
-                key_hint: "j/k",
-                label: "navigate",
-            });
-        }
-        if !repo.has_origin_remote {
-            suggestions.push(Suggestion {
-                key_hint: "R",
-                label: "create repo",
-            });
-        }
+    if let Some(repo) = state.selected_repo_ref()
+        && !repo.has_origin_remote
+    {
+        suggestions.push(Suggestion {
+            key_hint: "R",
+            label: "create repo",
+        });
     }
 
     suggestions.push(Suggestion {

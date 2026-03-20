@@ -92,13 +92,16 @@ impl GhCliGitHubService {
                     "IN_PROGRESS" => CheckStatus::InProgress,
                     _ => CheckStatus::Completed,
                 },
-                conclusion: c.conclusion.as_deref().map(|s| match s.to_uppercase().as_str() {
-                    "FAILURE" | "ACTION_REQUIRED" => CheckConclusion::Failure,
-                    "CANCELLED" => CheckConclusion::Cancelled,
-                    "SKIPPED" | "NEUTRAL" => CheckConclusion::Skipped,
-                    "TIMED_OUT" | "STARTUP_FAILURE" => CheckConclusion::TimedOut,
-                    _ => CheckConclusion::Success,
-                }),
+                conclusion: c
+                    .conclusion
+                    .as_deref()
+                    .map(|s| match s.to_uppercase().as_str() {
+                        "FAILURE" | "ACTION_REQUIRED" => CheckConclusion::Failure,
+                        "CANCELLED" => CheckConclusion::Cancelled,
+                        "SKIPPED" | "NEUTRAL" => CheckConclusion::Skipped,
+                        "TIMED_OUT" | "STARTUP_FAILURE" => CheckConclusion::TimedOut,
+                        _ => CheckConclusion::Success,
+                    }),
             })
             .collect())
     }

@@ -102,11 +102,39 @@ fn render_branch_details(frame: &mut Frame, area: Rect, state: &AppState) {
             )));
         }
 
-        lines.push(Line::default());
-        lines.push(Line::from(Span::styled(
-            "Tracking: not available",
-            theme::muted_text_style(),
-        )));
+        if let Some(tracking) = &state.branch_tracking
+            && is_current
+        {
+            lines.push(Line::default());
+            let tracking_text = if tracking.ahead == 0 && tracking.behind == 0 {
+                "Up to date with remote".to_string()
+            } else {
+                let mut parts = Vec::new();
+                if tracking.ahead > 0 {
+                    parts.push(format!("{}  ahead", tracking.ahead));
+                }
+                if tracking.behind > 0 {
+                    parts.push(format!("{}  behind", tracking.behind));
+                }
+                parts.join(", ")
+            };
+            lines.push(Line::from(vec![
+                Span::styled("Tracking: ", theme::muted_text_style()),
+                Span::styled(tracking_text, theme::text_style()),
+            ]));
+            if let Some(ref remote_name) = tracking.remote_name {
+                lines.push(Line::from(vec![
+                    Span::styled("Remote:   ", theme::muted_text_style()),
+                    Span::styled(remote_name.clone(), theme::text_style()),
+                ]));
+            }
+        } else {
+            lines.push(Line::default());
+            lines.push(Line::from(Span::styled(
+                "Tracking: not available",
+                theme::muted_text_style(),
+            )));
+        }
     } else {
         lines.push(Line::from(Span::styled(
             "No branch selected.",
@@ -126,6 +154,14 @@ fn render_branch_details(frame: &mut Frame, area: Rect, state: &AppState) {
         Span::styled("delete", theme::muted_text_style()),
         Span::styled("  m ", theme::accent_text_style()),
         Span::styled("merge", theme::muted_text_style()),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("f ", theme::accent_text_style()),
+        Span::styled("fetch", theme::muted_text_style()),
+        Span::styled("  p ", theme::accent_text_style()),
+        Span::styled("push", theme::muted_text_style()),
+        Span::styled("  P ", theme::accent_text_style()),
+        Span::styled("pull", theme::muted_text_style()),
     ]));
 
     let paragraph = Paragraph::new(Text::from(lines)).wrap(ratatui::widgets::Wrap { trim: true });

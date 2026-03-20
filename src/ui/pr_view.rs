@@ -92,10 +92,7 @@ fn render_pr_detail(frame: &mut Frame, area: Rect, state: &AppState) {
     let mut lines = vec![
         Line::from(vec![
             Span::styled("Title:   ", theme::muted_text_style()),
-            Span::styled(
-                &pr.title,
-                theme::text_style().add_modifier(Modifier::BOLD),
-            ),
+            Span::styled(&pr.title, theme::text_style().add_modifier(Modifier::BOLD)),
         ]),
         Line::default(),
         Line::from(vec![

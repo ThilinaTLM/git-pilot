@@ -5,7 +5,7 @@ pub mod shared;
 pub mod ui;
 
 use std::io;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use app::controller::AppController;
@@ -40,8 +40,21 @@ fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     controller: &mut AppController,
 ) -> Result<()> {
+    let mut last_auto_fetch = Instant::now();
+
     loop {
         controller.check_background_results();
+
+        // Auto-fetch if enabled and interval has elapsed
+        let settings = &controller.state().settings;
+        if settings.auto_fetch_enabled {
+            let interval = Duration::from_secs(settings.auto_fetch_interval_secs);
+            if last_auto_fetch.elapsed() >= interval {
+                controller.auto_fetch();
+                last_auto_fetch = Instant::now();
+            }
+        }
+
         terminal.draw(|frame| ui::screen::render(frame, controller.state()))?;
 
         if controller.state().should_quit {
