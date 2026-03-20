@@ -4,10 +4,10 @@ use anyhow::{Result, anyhow};
 use crossterm::event::KeyEvent;
 
 use crate::app::actions::{AppAction, map_key_event};
-use crate::app::state::{ActivePanel, AppState, RepositoryState};
-use crate::domain::status::FileSection;
+use crate::app::state::{AppState, Modal, RepositoryState};
 use crate::domain::branch::BranchName;
 use crate::domain::commit::CommitMessage;
+use crate::domain::status::FileSection;
 use crate::infrastructure::git_cli::{GitCliRepositoryService, GitRepositoryService};
 use crate::infrastructure::repo_discovery::{RepositoryDiscovery, WalkDirRepositoryDiscovery};
 
@@ -37,7 +37,7 @@ impl AppController {
     }
 
     pub fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<()> {
-        let action = map_key_event(&self.state.active_panel, key_event);
+        let action = map_key_event(&self.state.active_view, &self.state.modal, key_event);
         if let Err(error) = self.dispatch(action) {
             self.state.set_error(error.to_string());
         }
@@ -59,11 +59,12 @@ impl AppController {
             AppAction::UnstageSelected => self.unstage_selected()?,
             AppAction::StageAll => self.stage_all()?,
             AppAction::UnstageAll => self.unstage_all()?,
+            AppAction::ToggleStage => self.toggle_stage()?,
             AppAction::OpenBranchSwitch => self.state.open_branch_switch(),
             AppAction::OpenBranchCreate => self.state.open_branch_create(),
             AppAction::OpenCommitPanel => self.state.open_commit_panel(),
-            AppAction::ConfirmPanel => self.confirm_panel()?,
-            AppAction::ClosePanel => self.state.close_panel(),
+            AppAction::ConfirmModal => self.confirm_modal()?,
+            AppAction::CloseModal => self.state.close_modal(),
             AppAction::ToggleHelp => self.state.show_help = !self.state.show_help,
             AppAction::InsertChar(ch) => self.insert_char(ch),
             AppAction::Backspace => self.backspace(),
@@ -74,6 +75,11 @@ impl AppController {
             AppAction::ScrollDiffUp => {
                 self.state.diff_scroll = self.state.diff_scroll.saturating_sub(5);
             }
+            AppAction::SwitchView(view) => self.state.switch_view(view),
+            AppAction::NextView => self.state.next_view(),
+            AppAction::PreviousView => self.state.previous_view(),
+            AppAction::DeleteBranch => self.delete_branch()?,
+            AppAction::MergeBranch => self.merge_branch()?,
         }
 
         self.state.sync_selection();
@@ -113,6 +119,18 @@ impl AppController {
         self.state
             .replace_selected_repository(RepositoryState::from_details(details));
         Ok(())
+    }
+
+    fn toggle_stage(&mut self) -> Result<()> {
+        let section = self
+            .state
+            .selected_file_section()
+            .ok_or_else(|| anyhow!("no file selected"))?;
+        if section == FileSection::Staged {
+            self.unstage_selected()
+        } else {
+            self.stage_selected()
+        }
     }
 
     fn stage_selected(&mut self) -> Result<()> {
@@ -181,13 +199,76 @@ impl AppController {
         Ok(())
     }
 
-    fn confirm_panel(&mut self) -> Result<()> {
-        match self.state.active_panel {
-            ActivePanel::None => Ok(()),
-            ActivePanel::BranchSwitch => self.confirm_branch_switch(),
-            ActivePanel::BranchCreate => self.confirm_branch_create(),
-            ActivePanel::Commit => self.confirm_commit(),
+    fn delete_branch(&mut self) -> Result<()> {
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+        let branch_name = self
+            .state
+            .selected_branch_name()
+            .ok_or_else(|| anyhow!("no branch selected"))?
+            .to_string();
+
+        if let Some(repo) = self.state.selected_repo_ref()
+            && repo
+                .current_branch
+                .as_deref()
+                .is_some_and(|current| current == branch_name)
+        {
+            return Err(anyhow!("cannot delete the current branch"));
         }
+
+        let branch = BranchName::try_from(branch_name)?;
+        self.git.delete_branch(&repo_path, &branch)?;
+        self.reload_selected_repo()?;
+        self.state
+            .set_info(format!("Deleted branch {}", branch.as_str()));
+        Ok(())
+    }
+
+    fn merge_branch(&mut self) -> Result<()> {
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+        let branch_name = self
+            .state
+            .selected_branch_name()
+            .ok_or_else(|| anyhow!("no branch selected"))?
+            .to_string();
+        let branch = BranchName::try_from(branch_name)?;
+        self.git.merge_branch(&repo_path, &branch)?;
+        self.reload_selected_repo()?;
+        self.state.set_info(format!("Merged {}", branch.as_str()));
+        Ok(())
+    }
+
+    fn confirm_modal(&mut self) -> Result<()> {
+        match self.state.modal {
+            Modal::None => self.confirm_branches_view_switch(),
+            Modal::BranchSwitch => self.confirm_branch_switch(),
+            Modal::BranchCreate => self.confirm_branch_create(),
+            Modal::Commit => self.confirm_commit(),
+        }
+    }
+
+    fn confirm_branches_view_switch(&mut self) -> Result<()> {
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+        let branch_name = self
+            .state
+            .selected_branch_name()
+            .ok_or_else(|| anyhow!("no branch selected"))?
+            .to_string();
+        let branch = BranchName::try_from(branch_name)?;
+        self.git.switch_branch(&repo_path, &branch)?;
+        self.reload_selected_repo()?;
+        self.state
+            .set_info(format!("Switched to {}", branch.as_str()));
+        Ok(())
     }
 
     fn confirm_branch_switch(&mut self) -> Result<()> {
@@ -203,7 +284,7 @@ impl AppController {
         let branch = BranchName::try_from(branch_name)?;
         self.git.switch_branch(&repo_path, &branch)?;
         self.reload_selected_repo()?;
-        self.state.close_panel();
+        self.state.close_modal();
         self.state
             .set_info(format!("Switched to {}", branch.as_str()));
         Ok(())
@@ -217,7 +298,7 @@ impl AppController {
         let branch = BranchName::try_from(self.state.branch_name_input.clone())?;
         self.git.create_branch(&repo_path, &branch)?;
         self.reload_selected_repo()?;
-        self.state.close_panel();
+        self.state.close_modal();
         self.state
             .set_info(format!("Created and switched to {}", branch.as_str()));
         Ok(())
@@ -235,34 +316,34 @@ impl AppController {
         let message = CommitMessage::try_from(self.state.commit_message_input.clone())?;
         self.git.commit(&repo.summary.path, &message)?;
         self.reload_selected_repo()?;
-        self.state.close_panel();
+        self.state.close_modal();
         self.state
             .set_info(format!("Committed {}", message.subject()));
         Ok(())
     }
 
     fn insert_char(&mut self, ch: char) {
-        match self.state.active_panel {
-            ActivePanel::BranchCreate => self.state.branch_name_input.push(ch),
-            ActivePanel::Commit => self.state.commit_message_input.push(ch),
-            ActivePanel::None | ActivePanel::BranchSwitch => {}
+        match self.state.modal {
+            Modal::BranchCreate => self.state.branch_name_input.push(ch),
+            Modal::Commit => self.state.commit_message_input.push(ch),
+            Modal::None | Modal::BranchSwitch => {}
         }
     }
 
     fn backspace(&mut self) {
-        match self.state.active_panel {
-            ActivePanel::BranchCreate => {
+        match self.state.modal {
+            Modal::BranchCreate => {
                 self.state.branch_name_input.pop();
             }
-            ActivePanel::Commit => {
+            Modal::Commit => {
                 self.state.commit_message_input.pop();
             }
-            ActivePanel::None | ActivePanel::BranchSwitch => {}
+            Modal::None | Modal::BranchSwitch => {}
         }
     }
 
     fn insert_newline(&mut self) {
-        if matches!(self.state.active_panel, ActivePanel::Commit) {
+        if matches!(self.state.modal, Modal::Commit) {
             self.state.commit_message_input.push('\n');
         }
     }

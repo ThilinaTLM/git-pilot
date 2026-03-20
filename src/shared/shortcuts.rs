@@ -1,16 +1,9 @@
-pub struct ShortcutSection {
-    pub title: &'static str,
-    pub entries: &'static [ShortcutEntry],
-}
-
 pub struct ShortcutEntry {
     pub keys: &'static str,
     pub description: &'static str,
 }
 
-pub const SHORT_HELP: &str = "? help  q quit  h/l repos  j/k files  J/K scroll diff  s/u stage  S/U all  b switch  n branch  c commit  r refresh";
-
-const GLOBAL_SHORTCUTS: &[ShortcutEntry] = &[
+pub const GLOBAL_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
         keys: "?",
         description: "toggle keyboard shortcuts help",
@@ -23,36 +16,37 @@ const GLOBAL_SHORTCUTS: &[ShortcutEntry] = &[
         keys: "r",
         description: "refresh repositories and status",
     },
-];
-
-const NAVIGATION_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
-        keys: "h / Left",
+        keys: "Tab / Shift+Tab",
+        description: "switch between views",
+    },
+    ShortcutEntry {
+        keys: "1 / 2",
+        description: "jump to Changes / Branches view",
+    },
+    ShortcutEntry {
+        keys: "Left / h",
         description: "select previous repository tab",
     },
     ShortcutEntry {
-        keys: "l / Right",
+        keys: "Right / l",
         description: "select next repository tab",
-    },
-    ShortcutEntry {
-        keys: "j / Down",
-        description: "select next changed file or branch",
-    },
-    ShortcutEntry {
-        keys: "k / Up",
-        description: "select previous changed file or branch",
-    },
-    ShortcutEntry {
-        keys: "J / Ctrl+d",
-        description: "scroll diff preview down",
-    },
-    ShortcutEntry {
-        keys: "K / Ctrl+u",
-        description: "scroll diff preview up",
     },
 ];
 
-const CHANGE_SHORTCUTS: &[ShortcutEntry] = &[
+pub const CHANGES_SHORTCUTS: &[ShortcutEntry] = &[
+    ShortcutEntry {
+        keys: "Down / j",
+        description: "select next changed file",
+    },
+    ShortcutEntry {
+        keys: "Up / k",
+        description: "select previous changed file",
+    },
+    ShortcutEntry {
+        keys: "Space",
+        description: "toggle stage/unstage selected file",
+    },
     ShortcutEntry {
         keys: "s",
         description: "stage selected file",
@@ -69,24 +63,56 @@ const CHANGE_SHORTCUTS: &[ShortcutEntry] = &[
         keys: "U",
         description: "unstage all changes",
     },
-];
-
-const BRANCH_SHORTCUTS: &[ShortcutEntry] = &[
+    ShortcutEntry {
+        keys: "c",
+        description: "open commit panel",
+    },
     ShortcutEntry {
         keys: "b",
         description: "open branch switcher",
     },
     ShortcutEntry {
         keys: "n",
-        description: "create and switch to a new branch",
+        description: "create a new branch",
+    },
+    ShortcutEntry {
+        keys: "PageDown / Ctrl+d",
+        description: "scroll diff preview down",
+    },
+    ShortcutEntry {
+        keys: "PageUp / Ctrl+u",
+        description: "scroll diff preview up",
     },
 ];
 
-const COMMIT_SHORTCUTS: &[ShortcutEntry] = &[
+pub const BRANCHES_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
-        keys: "c",
-        description: "open commit panel",
+        keys: "Down / j",
+        description: "select next branch",
     },
+    ShortcutEntry {
+        keys: "Up / k",
+        description: "select previous branch",
+    },
+    ShortcutEntry {
+        keys: "Enter",
+        description: "switch to selected branch",
+    },
+    ShortcutEntry {
+        keys: "n",
+        description: "create a new branch",
+    },
+    ShortcutEntry {
+        keys: "d",
+        description: "delete selected branch",
+    },
+    ShortcutEntry {
+        keys: "m",
+        description: "merge selected branch into current",
+    },
+];
+
+pub const MODAL_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
         keys: "Enter",
         description: "confirm active modal or submit input",
@@ -102,28 +128,5 @@ const COMMIT_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
         keys: "Ctrl+n",
         description: "insert newline in the commit editor",
-    },
-];
-
-pub const HELP_SECTIONS: &[ShortcutSection] = &[
-    ShortcutSection {
-        title: "Global",
-        entries: GLOBAL_SHORTCUTS,
-    },
-    ShortcutSection {
-        title: "Navigation",
-        entries: NAVIGATION_SHORTCUTS,
-    },
-    ShortcutSection {
-        title: "Changes",
-        entries: CHANGE_SHORTCUTS,
-    },
-    ShortcutSection {
-        title: "Branches",
-        entries: BRANCH_SHORTCUTS,
-    },
-    ShortcutSection {
-        title: "Commit and Modals",
-        entries: COMMIT_SHORTCUTS,
     },
 ];

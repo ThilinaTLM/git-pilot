@@ -7,17 +7,17 @@ use crate::ui::theme;
 
 pub fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState) {
     let content = if let Some(repo) = state.selected_repo_ref() {
-        let branch = repo
-            .current_branch
-            .as_deref()
-            .unwrap_or("(detached)");
+        let branch = repo.current_branch.as_deref().unwrap_or("(detached)");
         let branch_count = repo.branches.len();
         let file_count = repo.status_files.len();
         Line::from(vec![
             Span::styled(format!("  {branch}"), theme::accent_text_style()),
             Span::styled(" • ", theme::muted_text_style()),
             Span::styled(
-                format!("{branch_count} branch{}", if branch_count == 1 { "" } else { "es" }),
+                format!(
+                    "{branch_count} branch{}",
+                    if branch_count == 1 { "" } else { "es" }
+                ),
                 theme::text_style(),
             ),
             Span::styled(" • ", theme::muted_text_style()),
@@ -43,10 +43,39 @@ pub fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState) {
 pub fn render_switch_modal(frame: &mut Frame, area: Rect, state: &AppState) {
     let modal = centered_rect(50, 60, area);
     frame.render_widget(Clear, modal);
-    let block = theme::modal_block("Switch Branch");
+
+    let branch_count = state
+        .selected_repo_ref()
+        .map(|r| r.branches.len())
+        .unwrap_or(0);
+    let title = format!("Switch Branch ({branch_count})");
+    let block = theme::modal_elevated_block(title);
     let inner = block.inner(modal);
     frame.render_widget(block, modal);
 
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // description
+            Constraint::Length(1), // gap
+            Constraint::Min(3),    // branch list
+            Constraint::Length(1), // gap
+            Constraint::Length(1), // shortcut bar
+        ])
+        .split(inner);
+
+    // Description
+    let current = state
+        .selected_repo_ref()
+        .and_then(|r| r.current_branch.as_deref())
+        .unwrap_or("none");
+    let desc = Line::from(vec![
+        Span::styled("Current: ", theme::modal_muted_style()),
+        Span::styled(current.to_string(), theme::modal_accent_style()),
+    ]);
+    frame.render_widget(Paragraph::new(desc), layout[0]);
+
+    // Branch list
     let items = state
         .selected_repo_ref()
         .map(|repo| {
@@ -57,11 +86,11 @@ pub fn render_switch_modal(frame: &mut Frame, area: Rect, state: &AppState) {
                         .current_branch
                         .as_deref()
                         .is_some_and(|current| current == branch);
-                    let prefix = if is_current { "● " } else { "  " };
+                    let prefix = if is_current { " ● " } else { "   " };
                     let style = if is_current {
-                        theme::accent_text_style()
+                        theme::modal_accent_style()
                     } else {
-                        theme::text_style()
+                        theme::modal_text_style()
                     };
                     ListItem::new(Line::from(vec![
                         Span::styled(prefix, style),
@@ -78,36 +107,104 @@ pub fn render_switch_modal(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 
     let list = List::new(items)
-        .style(theme::text_style())
-        .highlight_style(theme::selected_list_style())
-        .highlight_symbol("▸ ");
+        .style(theme::modal_text_style())
+        .highlight_style(
+            Style::default()
+                .fg(Color::Rgb(226, 232, 240))
+                .bg(Color::Rgb(22, 78, 99))
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol(" ▸ ");
 
-    frame.render_stateful_widget(list, inner, &mut list_state);
+    frame.render_stateful_widget(list, layout[2], &mut list_state);
+
+    // Shortcut bar
+    let shortcuts = Line::from(vec![
+        Span::styled("j/k ", theme::modal_accent_style()),
+        Span::styled("navigate", theme::modal_muted_style()),
+        Span::styled("  Enter ", theme::modal_accent_style()),
+        Span::styled("switch", theme::modal_muted_style()),
+        Span::styled("  Esc ", theme::modal_accent_style()),
+        Span::styled("cancel", theme::modal_muted_style()),
+    ]);
+    frame.render_widget(Paragraph::new(shortcuts), layout[4]);
 }
 
 pub fn render_create_modal(frame: &mut Frame, area: Rect, state: &AppState) {
-    let modal = centered_rect(50, 25, area);
+    let modal = centered_rect(50, 30, area);
     frame.render_widget(Clear, modal);
-    let block = theme::modal_block("Create Branch");
+
+    let block = theme::modal_elevated_block("New Branch");
     let inner = block.inner(modal);
     frame.render_widget(block, modal);
 
-    let paragraph = Paragraph::new(vec![
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // description
+            Constraint::Length(1), // gap
+            Constraint::Length(3), // input field
+            Constraint::Length(1), // gap
+            Constraint::Length(1), // branching from
+            Constraint::Min(0),    // spacer
+            Constraint::Length(1), // shortcut bar
+        ])
+        .split(inner);
+
+    // Description
+    let desc = Line::from(Span::styled(
+        "Enter a name for the new branch.",
+        theme::modal_muted_style(),
+    ));
+    frame.render_widget(Paragraph::new(desc), layout[0]);
+
+    // Input field
+    let input_block = theme::input_block_focused("Branch name");
+    let input_inner = input_block.inner(layout[2]);
+    frame.render_widget(input_block, layout[2]);
+
+    let input_display = if state.branch_name_input.is_empty() {
         Line::from(Span::styled(
-            "Enter a new branch name.",
-            theme::muted_text_style(),
-        )),
-        Line::default(),
-        Line::from(Span::styled(
-            state.branch_name_input.as_str(),
-            theme::text_style(),
-        )),
-        Line::default(),
-        Line::from(Span::styled(
-            "Enter to create, Esc to cancel.",
-            theme::muted_text_style(),
-        )),
-    ])
-    .wrap(ratatui::widgets::Wrap { trim: false });
-    frame.render_widget(paragraph, inner);
+            "feature/my-branch...",
+            Style::default()
+                .fg(Color::Rgb(71, 85, 105))
+                .bg(Color::Rgb(15, 23, 42)),
+        ))
+    } else {
+        Line::from(vec![
+            Span::styled(
+                state.branch_name_input.clone(),
+                Style::default()
+                    .fg(Color::Rgb(226, 232, 240))
+                    .bg(Color::Rgb(15, 23, 42)),
+            ),
+            Span::styled(
+                "_",
+                Style::default()
+                    .fg(Color::Rgb(34, 211, 238))
+                    .bg(Color::Rgb(15, 23, 42)),
+            ),
+        ])
+    };
+    frame.render_widget(Paragraph::new(input_display), input_inner);
+
+    // Branching from
+    let from_branch = state
+        .selected_repo_ref()
+        .and_then(|r| r.current_branch.as_deref())
+        .unwrap_or("unknown");
+    let from_line = Line::from(vec![
+        Span::styled("From: ", theme::modal_muted_style()),
+        Span::styled(from_branch.to_string(), theme::modal_accent_style()),
+    ]);
+    frame.render_widget(Paragraph::new(from_line), layout[4]);
+
+    // Shortcut bar
+    let shortcuts = Line::from(vec![
+        Span::styled("Enter ", theme::modal_accent_style()),
+        Span::styled("create", theme::modal_muted_style()),
+        Span::styled("  Esc ", theme::modal_accent_style()),
+        Span::styled("cancel", theme::modal_muted_style()),
+    ]);
+    frame.render_widget(Paragraph::new(shortcuts), layout[6]);
 }

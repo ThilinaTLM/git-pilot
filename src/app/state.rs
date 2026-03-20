@@ -3,8 +3,33 @@ use std::path::{Path, PathBuf};
 use crate::domain::repo::{RepositoryDetails, RepositorySummary};
 use crate::domain::status::{ChangedFile, FileSection};
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum View {
+    #[default]
+    Changes,
+    Branches,
+}
+
+impl View {
+    pub const ALL: &[View] = &[View::Changes, View::Branches];
+
+    pub fn index(&self) -> usize {
+        match self {
+            View::Changes => 0,
+            View::Branches => 1,
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            View::Changes => "Changes",
+            View::Branches => "Branches",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ActivePanel {
+pub enum Modal {
     None,
     BranchSwitch,
     BranchCreate,
@@ -121,7 +146,8 @@ pub struct AppState {
     pub selected_repo: usize,
     pub selected_file: usize,
     pub selected_branch: usize,
-    pub active_panel: ActivePanel,
+    pub active_view: View,
+    pub modal: Modal,
     pub branch_name_input: String,
     pub commit_message_input: String,
     pub message: Option<FlashMessage>,
@@ -139,7 +165,8 @@ impl Default for AppState {
             selected_repo: 0,
             selected_file: 0,
             selected_branch: 0,
-            active_panel: ActivePanel::None,
+            active_view: View::default(),
+            modal: Modal::None,
             branch_name_input: String::new(),
             commit_message_input: String::new(),
             message: None,
@@ -202,6 +229,31 @@ impl AppState {
             self.selected_file = 0;
             self.selected_branch = 0;
         }
+    }
+
+    pub fn switch_view(&mut self, view: View) {
+        if self.active_view != view {
+            self.active_view = view;
+            self.diff_scroll = 0;
+        }
+    }
+
+    pub fn next_view(&mut self) {
+        let all = View::ALL;
+        let current = self.active_view.index();
+        let next = (current + 1) % all.len();
+        self.switch_view(all[next].clone());
+    }
+
+    pub fn previous_view(&mut self) {
+        let all = View::ALL;
+        let current = self.active_view.index();
+        let prev = if current == 0 {
+            all.len() - 1
+        } else {
+            current - 1
+        };
+        self.switch_view(all[prev].clone());
     }
 
     pub fn select_next_repo(&mut self) {
@@ -267,22 +319,22 @@ impl AppState {
     }
 
     pub fn open_branch_switch(&mut self) {
-        self.active_panel = ActivePanel::BranchSwitch;
+        self.modal = Modal::BranchSwitch;
         self.selected_branch = self.current_branch_index().unwrap_or(0);
     }
 
     pub fn open_branch_create(&mut self) {
-        self.active_panel = ActivePanel::BranchCreate;
+        self.modal = Modal::BranchCreate;
         self.branch_name_input.clear();
     }
 
     pub fn open_commit_panel(&mut self) {
-        self.active_panel = ActivePanel::Commit;
+        self.modal = Modal::Commit;
         self.commit_message_input.clear();
     }
 
-    pub fn close_panel(&mut self) {
-        self.active_panel = ActivePanel::None;
+    pub fn close_modal(&mut self) {
+        self.modal = Modal::None;
         self.branch_name_input.clear();
         self.commit_message_input.clear();
     }

@@ -1,4 +1,5 @@
 pub mod branch_panel;
+pub mod branches_view;
 pub mod commit_panel;
 pub mod diff_panel;
 pub mod help;
@@ -7,3 +8,4 @@ pub mod screen;
 pub mod status_list;
 pub mod tabs;
 pub mod theme;
+pub mod view_tabs;

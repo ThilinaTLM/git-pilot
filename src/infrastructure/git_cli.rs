@@ -17,12 +17,10 @@ pub trait GitRepositoryService {
     fn switch_branch(&self, repo_path: &Path, branch_name: &BranchName) -> Result<()>;
     fn create_branch(&self, repo_path: &Path, branch_name: &BranchName) -> Result<()>;
     fn commit(&self, repo_path: &Path, message: &CommitMessage) -> Result<()>;
-    fn diff_file(
-        &self,
-        repo_path: &Path,
-        file_path: &Path,
-        section: FileSection,
-    ) -> Result<String>;
+    fn delete_branch(&self, repo_path: &Path, branch_name: &BranchName) -> Result<()>;
+    fn merge_branch(&self, repo_path: &Path, branch_name: &BranchName) -> Result<()>;
+    fn diff_file(&self, repo_path: &Path, file_path: &Path, section: FileSection)
+    -> Result<String>;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -87,6 +85,18 @@ impl GitRepositoryService for GitCliRepositoryService {
         run_command(&mut command).map(|_| ())
     }
 
+    fn delete_branch(&self, repo_path: &Path, branch_name: &BranchName) -> Result<()> {
+        let mut command = base_git_command(repo_path);
+        command.arg("branch").arg("-d").arg(branch_name.as_str());
+        run_command(&mut command).map(|_| ())
+    }
+
+    fn merge_branch(&self, repo_path: &Path, branch_name: &BranchName) -> Result<()> {
+        let mut command = base_git_command(repo_path);
+        command.arg("merge").arg(branch_name.as_str());
+        run_command(&mut command).map(|_| ())
+    }
+
     fn diff_file(
         &self,
         repo_path: &Path,
@@ -108,11 +118,7 @@ impl GitRepositoryService for GitCliRepositoryService {
             }
             FileSection::Staged => {
                 let mut command = base_git_command(repo_path);
-                command
-                    .arg("diff")
-                    .arg("--cached")
-                    .arg("--")
-                    .arg(file_path);
+                command.arg("diff").arg("--cached").arg("--").arg(file_path);
                 let output = run_command(&mut command)?;
                 Ok(String::from_utf8_lossy(&output.stdout).to_string())
             }

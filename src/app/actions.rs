@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::app::state::ActivePanel;
+use crate::app::state::{Modal, View};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AppAction {
@@ -17,29 +17,63 @@ pub enum AppAction {
     UnstageSelected,
     StageAll,
     UnstageAll,
+    ToggleStage,
     OpenBranchSwitch,
     OpenBranchCreate,
     OpenCommitPanel,
-    ConfirmPanel,
-    ClosePanel,
+    ConfirmModal,
+    CloseModal,
     ToggleHelp,
     InsertChar(char),
     Backspace,
     InsertNewline,
     ScrollDiffDown,
     ScrollDiffUp,
+    SwitchView(View),
+    NextView,
+    PreviousView,
+    DeleteBranch,
+    MergeBranch,
 }
 
-pub fn map_key_event(active_panel: &ActivePanel, key_event: KeyEvent) -> AppAction {
-    match active_panel {
-        ActivePanel::None => map_normal_mode_key(key_event),
-        ActivePanel::BranchSwitch => map_branch_switch_key(key_event),
-        ActivePanel::BranchCreate => map_text_input_key(key_event, false),
-        ActivePanel::Commit => map_text_input_key(key_event, true),
+pub fn map_key_event(view: &View, modal: &Modal, key_event: KeyEvent) -> AppAction {
+    if *modal != Modal::None {
+        return map_modal_key(modal, key_event);
+    }
+    if let Some(action) = map_global_key(key_event) {
+        return action;
+    }
+    match view {
+        View::Changes => map_changes_key(key_event),
+        View::Branches => map_branches_key(key_event),
     }
 }
 
-fn map_normal_mode_key(key_event: KeyEvent) -> AppAction {
+fn map_modal_key(modal: &Modal, key_event: KeyEvent) -> AppAction {
+    match modal {
+        Modal::None => AppAction::Noop,
+        Modal::BranchSwitch => map_branch_switch_key(key_event),
+        Modal::BranchCreate => map_text_input_key(key_event, false),
+        Modal::Commit => map_text_input_key(key_event, true),
+    }
+}
+
+fn map_global_key(key_event: KeyEvent) -> Option<AppAction> {
+    match key_event.code {
+        KeyCode::Char('q') => Some(AppAction::Quit),
+        KeyCode::Char('?') => Some(AppAction::ToggleHelp),
+        KeyCode::Char('r') => Some(AppAction::RefreshRepos),
+        KeyCode::Left | KeyCode::Char('h') => Some(AppAction::SelectPreviousRepo),
+        KeyCode::Right | KeyCode::Char('l') => Some(AppAction::SelectNextRepo),
+        KeyCode::Tab => Some(AppAction::NextView),
+        KeyCode::BackTab => Some(AppAction::PreviousView),
+        KeyCode::Char('1') => Some(AppAction::SwitchView(View::Changes)),
+        KeyCode::Char('2') => Some(AppAction::SwitchView(View::Branches)),
+        _ => None,
+    }
+}
+
+fn map_changes_key(key_event: KeyEvent) -> AppAction {
     // Ctrl+d / Ctrl+u for diff scrolling
     if key_event.modifiers.contains(KeyModifiers::CONTROL) {
         return match key_event.code {
@@ -50,32 +84,40 @@ fn map_normal_mode_key(key_event: KeyEvent) -> AppAction {
     }
 
     match key_event.code {
-        KeyCode::Char('q') => AppAction::Quit,
-        KeyCode::Char('r') => AppAction::RefreshRepos,
-        KeyCode::Char('?') => AppAction::ToggleHelp,
-        KeyCode::Char('h') | KeyCode::Left => AppAction::SelectPreviousRepo,
-        KeyCode::Char('l') | KeyCode::Right => AppAction::SelectNextRepo,
-        KeyCode::Char('j') | KeyCode::Down => AppAction::SelectNextFile,
-        KeyCode::Char('k') | KeyCode::Up => AppAction::SelectPreviousFile,
-        KeyCode::Char('J') => AppAction::ScrollDiffDown,
-        KeyCode::Char('K') => AppAction::ScrollDiffUp,
+        KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextFile,
+        KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousFile,
+        KeyCode::Char(' ') => AppAction::ToggleStage,
         KeyCode::Char('s') => AppAction::StageSelected,
         KeyCode::Char('u') => AppAction::UnstageSelected,
         KeyCode::Char('S') => AppAction::StageAll,
         KeyCode::Char('U') => AppAction::UnstageAll,
+        KeyCode::Char('c') => AppAction::OpenCommitPanel,
         KeyCode::Char('b') => AppAction::OpenBranchSwitch,
         KeyCode::Char('n') => AppAction::OpenBranchCreate,
-        KeyCode::Char('c') => AppAction::OpenCommitPanel,
+        KeyCode::PageDown => AppAction::ScrollDiffDown,
+        KeyCode::PageUp => AppAction::ScrollDiffUp,
+        _ => AppAction::Noop,
+    }
+}
+
+fn map_branches_key(key_event: KeyEvent) -> AppAction {
+    match key_event.code {
+        KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextBranch,
+        KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousBranch,
+        KeyCode::Enter => AppAction::ConfirmModal,
+        KeyCode::Char('n') => AppAction::OpenBranchCreate,
+        KeyCode::Char('d') => AppAction::DeleteBranch,
+        KeyCode::Char('m') => AppAction::MergeBranch,
         _ => AppAction::Noop,
     }
 }
 
 fn map_branch_switch_key(key_event: KeyEvent) -> AppAction {
     match key_event.code {
-        KeyCode::Esc => AppAction::ClosePanel,
-        KeyCode::Enter => AppAction::ConfirmPanel,
-        KeyCode::Char('j') | KeyCode::Down => AppAction::SelectNextBranch,
-        KeyCode::Char('k') | KeyCode::Up => AppAction::SelectPreviousBranch,
+        KeyCode::Esc => AppAction::CloseModal,
+        KeyCode::Enter => AppAction::ConfirmModal,
+        KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextBranch,
+        KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousBranch,
         _ => AppAction::Noop,
     }
 }
@@ -89,8 +131,8 @@ fn map_text_input_key(key_event: KeyEvent, allow_newline: bool) -> AppAction {
     }
 
     match key_event.code {
-        KeyCode::Esc => AppAction::ClosePanel,
-        KeyCode::Enter => AppAction::ConfirmPanel,
+        KeyCode::Esc => AppAction::CloseModal,
+        KeyCode::Enter => AppAction::ConfirmModal,
         KeyCode::Backspace => AppAction::Backspace,
         KeyCode::Char(ch) if !key_event.modifiers.contains(KeyModifiers::CONTROL) => {
             AppAction::InsertChar(ch)
@@ -103,14 +145,15 @@ fn map_text_input_key(key_event: KeyEvent, allow_newline: bool) -> AppAction {
 mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-    use crate::app::state::ActivePanel;
+    use crate::app::state::{Modal, View};
 
     use super::{AppAction, map_key_event};
 
     #[test]
     fn maps_stage_all_in_normal_mode() {
         let action = map_key_event(
-            &ActivePanel::None,
+            &View::Changes,
+            &Modal::None,
             KeyEvent::new(KeyCode::Char('S'), KeyModifiers::SHIFT),
         );
 
@@ -120,10 +163,55 @@ mod tests {
     #[test]
     fn maps_commit_newline_shortcut() {
         let action = map_key_event(
-            &ActivePanel::Commit,
+            &View::Changes,
+            &Modal::Commit,
             KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL),
         );
 
         assert_eq!(action, AppAction::InsertNewline);
+    }
+
+    #[test]
+    fn maps_tab_to_next_view() {
+        let action = map_key_event(
+            &View::Changes,
+            &Modal::None,
+            KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+        );
+
+        assert_eq!(action, AppAction::NextView);
+    }
+
+    #[test]
+    fn maps_space_to_toggle_stage() {
+        let action = map_key_event(
+            &View::Changes,
+            &Modal::None,
+            KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE),
+        );
+
+        assert_eq!(action, AppAction::ToggleStage);
+    }
+
+    #[test]
+    fn maps_branches_view_delete() {
+        let action = map_key_event(
+            &View::Branches,
+            &Modal::None,
+            KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE),
+        );
+
+        assert_eq!(action, AppAction::DeleteBranch);
+    }
+
+    #[test]
+    fn maps_number_key_to_switch_view() {
+        let action = map_key_event(
+            &View::Changes,
+            &Modal::None,
+            KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE),
+        );
+
+        assert_eq!(action, AppAction::SwitchView(View::Branches));
     }
 }

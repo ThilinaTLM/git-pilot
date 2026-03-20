@@ -122,6 +122,72 @@ pub fn title_line(title: impl Into<String>) -> Line<'static> {
     )])
 }
 
+pub const MODAL_BG: Color = Color::Rgb(30, 41, 59);
+
+pub fn modal_elevated_block(title: impl Into<String>) -> Block<'static> {
+    Block::default()
+        .style(Style::default().fg(TEXT_PRIMARY).bg(MODAL_BG))
+        .title(Line::from(vec![Span::styled(
+            format!(" {} ", title.into()),
+            Style::default()
+                .fg(ACCENT)
+                .bg(MODAL_BG)
+                .add_modifier(Modifier::BOLD),
+        )]))
+        .borders(Borders::ALL)
+        .border_set(symbols::border::ROUNDED)
+        .border_style(Style::default().fg(ACCENT_SOFT).bg(MODAL_BG))
+        .padding(Padding::new(2, 2, 1, 1))
+}
+
+pub fn input_block(label: impl Into<String>) -> Block<'static> {
+    Block::default()
+        .style(Style::default().fg(TEXT_PRIMARY).bg(Color::Rgb(15, 23, 42)))
+        .title(Line::from(vec![Span::styled(
+            format!(" {} ", label.into()),
+            Style::default().fg(TEXT_MUTED).bg(Color::Rgb(15, 23, 42)),
+        )]))
+        .borders(Borders::ALL)
+        .border_set(symbols::border::ROUNDED)
+        .border_style(Style::default().fg(BORDER).bg(Color::Rgb(15, 23, 42)))
+        .padding(Padding::horizontal(1))
+}
+
+pub fn input_block_focused(label: impl Into<String>) -> Block<'static> {
+    Block::default()
+        .style(Style::default().fg(TEXT_PRIMARY).bg(Color::Rgb(15, 23, 42)))
+        .title(Line::from(vec![Span::styled(
+            format!(" {} ", label.into()),
+            Style::default()
+                .fg(ACCENT)
+                .bg(Color::Rgb(15, 23, 42))
+                .add_modifier(Modifier::BOLD),
+        )]))
+        .borders(Borders::ALL)
+        .border_set(symbols::border::ROUNDED)
+        .border_style(Style::default().fg(ACCENT).bg(Color::Rgb(15, 23, 42)))
+        .padding(Padding::horizontal(1))
+}
+
+pub fn modal_text_style() -> Style {
+    Style::default().fg(TEXT_PRIMARY).bg(MODAL_BG)
+}
+
+pub fn modal_muted_style() -> Style {
+    Style::default().fg(TEXT_MUTED).bg(MODAL_BG)
+}
+
+pub fn modal_accent_style() -> Style {
+    Style::default()
+        .fg(ACCENT)
+        .bg(MODAL_BG)
+        .add_modifier(Modifier::BOLD)
+}
+
+pub fn separator_style() -> Style {
+    Style::default().fg(BORDER).bg(MODAL_BG)
+}
+
 fn chrome_block(title: String, padding: Padding) -> Block<'static> {
     Block::default()
         .style(surface_style())

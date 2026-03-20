@@ -4,9 +4,9 @@ use crate::ui::theme;
 
 pub struct ScreenLayout {
     pub tabs: Rect,
+    pub view_tabs: Rect,
     pub status_bar: Rect,
-    pub file_list: Rect,
-    pub diff_preview: Rect,
+    pub view_area: Rect,
     pub footer: Rect,
 }
 
@@ -18,15 +18,28 @@ pub fn build_layout(area: Rect) -> ScreenLayout {
     let vertical = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Length(theme::SECTION_GAP),
-            Constraint::Length(1),
-            Constraint::Length(theme::SECTION_GAP),
-            Constraint::Min(10),
-            Constraint::Length(theme::SECTION_GAP),
-            Constraint::Length(3),
+            Constraint::Length(3),                  // tabs
+            Constraint::Length(theme::SECTION_GAP), // gap
+            Constraint::Length(1),                  // view_tabs
+            Constraint::Length(theme::SECTION_GAP), // gap
+            Constraint::Length(1),                  // status_bar
+            Constraint::Length(theme::SECTION_GAP), // gap
+            Constraint::Min(8),                     // view_area
+            Constraint::Length(theme::SECTION_GAP), // gap
+            Constraint::Length(3),                  // footer
         ])
         .split(page);
+
+    ScreenLayout {
+        tabs: vertical[0],
+        view_tabs: vertical[2],
+        status_bar: vertical[4],
+        view_area: vertical[6],
+        footer: vertical[8],
+    }
+}
+
+pub fn split_changes_view(area: Rect) -> (Rect, Rect) {
     let horizontal = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -34,15 +47,20 @@ pub fn build_layout(area: Rect) -> ScreenLayout {
             Constraint::Length(theme::PANE_GAP),
             Constraint::Percentage(60),
         ])
-        .split(vertical[4]);
+        .split(area);
+    (horizontal[0], horizontal[2])
+}
 
-    ScreenLayout {
-        tabs: vertical[0],
-        status_bar: vertical[2],
-        file_list: horizontal[0],
-        diff_preview: horizontal[2],
-        footer: vertical[6],
-    }
+pub fn split_branches_view(area: Rect) -> (Rect, Rect) {
+    let horizontal = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(40),
+            Constraint::Length(theme::PANE_GAP),
+            Constraint::Percentage(60),
+        ])
+        .split(area);
+    (horizontal[0], horizontal[2])
 }
 
 pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
