@@ -5,55 +5,46 @@ use crate::app::state::{AppState, View};
 use crate::app::suggestions::compute_suggestions;
 use crate::shared::shortcuts;
 use crate::ui::layout::centered_rect;
+use crate::ui::summary_line;
 use crate::ui::theme;
 
 pub fn render_footer(frame: &mut Frame, area: Rect, state: &AppState) {
-    let content = match state.message.as_ref().map(|message| &message.level) {
+    let left_spans = match state.message.as_ref().map(|message| &message.level) {
         Some(crate::app::state::MessageLevel::Error) => {
             let text = state
                 .message
                 .as_ref()
                 .map(|message| message.text.as_str())
                 .unwrap_or("");
-            Line::from(vec![
+            vec![
                 Span::styled(
                     "Error  ",
                     theme::error_text_style().add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(text, theme::error_text_style()),
-            ])
+            ]
         }
-        Some(crate::app::state::MessageLevel::Info) => {
-            let text = state
-                .message
-                .as_ref()
-                .map(|message| message.text.as_str())
-                .unwrap_or("");
-            let suggestion_line = render_suggestion_spans(state);
-            let mut spans = vec![
-                Span::styled("Info  ", theme::accent_text_style()),
-                Span::styled(text, theme::text_style()),
-                Span::styled("  •  ", theme::muted_text_style()),
-            ];
-            spans.extend(suggestion_line);
-            Line::from(spans)
-        }
-        None => {
-            let mut spans = vec![Span::styled(
-                "Hints  ",
-                theme::muted_text_style().add_modifier(Modifier::BOLD),
-            )];
-            spans.extend(render_suggestion_spans(state));
-            Line::from(spans)
-        }
+        _ => summary_line::build_spans(state),
     };
 
-    let block = theme::footer_block();
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let right_spans = render_suggestion_spans(state);
 
-    let paragraph = Paragraph::new(content).wrap(ratatui::widgets::Wrap { trim: true });
-    frame.render_widget(paragraph, inner);
+    // Calculate widths to right-align hints
+    let left_width: usize = left_spans.iter().map(|s| s.width()).sum();
+    let right_width: usize = right_spans.iter().map(|s| s.width()).sum();
+    let area_width = area.width as usize;
+
+    let mut spans = left_spans;
+
+    let gap = area_width.saturating_sub(left_width + right_width);
+    if gap > 0 {
+        spans.push(Span::raw(" ".repeat(gap)));
+    }
+    spans.extend(right_spans);
+
+    let line = Line::from(spans);
+    let paragraph = Paragraph::new(line);
+    frame.render_widget(paragraph, area);
 }
 
 fn render_suggestion_spans(state: &AppState) -> Vec<Span<'static>> {
@@ -110,11 +101,14 @@ fn help_text(state: &AppState) -> Text<'static> {
         View::Branches => {
             render_section(&mut lines, "Branches View", shortcuts::BRANCHES_SHORTCUTS);
         }
-        View::Log => {
-            render_section(&mut lines, "Log View", shortcuts::LOG_SHORTCUTS);
+        View::Commits => {
+            render_section(&mut lines, "Commits View", shortcuts::COMMITS_SHORTCUTS);
         }
-        View::Remotes => {
-            render_section(&mut lines, "Remotes View", shortcuts::REMOTES_SHORTCUTS);
+        View::Pr => {
+            render_section(&mut lines, "PR View", shortcuts::PR_SHORTCUTS);
+        }
+        View::Settings => {
+            render_section(&mut lines, "Settings View", shortcuts::SETTINGS_SHORTCUTS);
         }
     }
 

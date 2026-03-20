@@ -1,17 +1,15 @@
 use ratatui::prelude::*;
-use ratatui::widgets::Paragraph;
 
 use crate::app::state::AppState;
 use crate::ui::theme;
 
-pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+/// Build summary spans (branch, counts) for use in the footer.
+pub fn build_spans(state: &AppState) -> Vec<Span<'static>> {
     let Some(repo) = state.selected_repo_ref() else {
-        let line = Line::from(Span::styled(
+        return vec![Span::styled(
             "No repository selected.",
             theme::muted_text_style(),
-        ));
-        frame.render_widget(Paragraph::new(line), area);
-        return;
+        )];
     };
 
     let mut spans: Vec<Span> = Vec::new();
@@ -60,6 +58,5 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         theme::warning_text_style(),
     ));
 
-    let line = Line::from(spans);
-    frame.render_widget(Paragraph::new(line), area);
+    spans
 }

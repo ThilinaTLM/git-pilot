@@ -17,6 +17,12 @@ pub enum AppAction {
     SelectPreviousLogEntry,
     SelectNextRemote,
     SelectPreviousRemote,
+    SelectNextPr,
+    SelectPreviousPr,
+    OpenPrInBrowser,
+    RefreshPrs,
+    ScrollPrDetailDown,
+    ScrollPrDetailUp,
     ScrollLogDown,
     ScrollLogUp,
     StageSelected,
@@ -27,6 +33,7 @@ pub enum AppAction {
     OpenBranchSwitch,
     OpenBranchCreate,
     OpenCommitPanel,
+    OpenCommitAmend,
     OpenCreateRepo,
     ConfirmModal,
     CloseModal,
@@ -59,8 +66,9 @@ pub fn map_key_event(view: &View, modal: &Modal, key_event: KeyEvent) -> AppActi
     match view {
         View::Changes => map_changes_key(key_event),
         View::Branches => map_branches_key(key_event),
-        View::Log => map_log_key(key_event),
-        View::Remotes => map_remotes_key(key_event),
+        View::Commits => map_commits_key(key_event),
+        View::Pr => map_pr_key(key_event),
+        View::Settings => map_settings_key(key_event),
     }
 }
 
@@ -94,8 +102,9 @@ fn map_global_key(key_event: KeyEvent) -> Option<AppAction> {
         KeyCode::BackTab => Some(AppAction::PreviousView),
         KeyCode::Char('1') => Some(AppAction::SwitchView(View::Changes)),
         KeyCode::Char('2') => Some(AppAction::SwitchView(View::Branches)),
-        KeyCode::Char('3') => Some(AppAction::SwitchView(View::Log)),
-        KeyCode::Char('4') => Some(AppAction::SwitchView(View::Remotes)),
+        KeyCode::Char('3') => Some(AppAction::SwitchView(View::Commits)),
+        KeyCode::Char('4') => Some(AppAction::SwitchView(View::Pr)),
+        KeyCode::Char('5') => Some(AppAction::SwitchView(View::Settings)),
         _ => None,
     }
 }
@@ -119,6 +128,7 @@ fn map_changes_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Char('S') => AppAction::StageAll,
         KeyCode::Char('U') => AppAction::UnstageAll,
         KeyCode::Char('c') => AppAction::OpenCommitPanel,
+        KeyCode::Char('a') => AppAction::OpenCommitAmend,
         KeyCode::Char('b') => AppAction::OpenBranchSwitch,
         KeyCode::Char('n') => AppAction::OpenBranchCreate,
         KeyCode::Char('R') => AppAction::OpenCreateRepo,
@@ -141,7 +151,7 @@ fn map_branches_key(key_event: KeyEvent) -> AppAction {
     }
 }
 
-fn map_log_key(key_event: KeyEvent) -> AppAction {
+fn map_commits_key(key_event: KeyEvent) -> AppAction {
     if key_event.modifiers.contains(KeyModifiers::CONTROL) {
         return match key_event.code {
             KeyCode::Char('d') => AppAction::ScrollLogDown,
@@ -159,7 +169,27 @@ fn map_log_key(key_event: KeyEvent) -> AppAction {
     }
 }
 
-fn map_remotes_key(key_event: KeyEvent) -> AppAction {
+fn map_pr_key(key_event: KeyEvent) -> AppAction {
+    if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+        return match key_event.code {
+            KeyCode::Char('d') => AppAction::ScrollPrDetailDown,
+            KeyCode::Char('u') => AppAction::ScrollPrDetailUp,
+            _ => AppAction::Noop,
+        };
+    }
+
+    match key_event.code {
+        KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextPr,
+        KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousPr,
+        KeyCode::Enter => AppAction::OpenPrInBrowser,
+        KeyCode::Char('r') => AppAction::RefreshPrs,
+        KeyCode::PageDown => AppAction::ScrollPrDetailDown,
+        KeyCode::PageUp => AppAction::ScrollPrDetailUp,
+        _ => AppAction::Noop,
+    }
+}
+
+fn map_settings_key(key_event: KeyEvent) -> AppAction {
     match key_event.code {
         KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextRemote,
         KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousRemote,

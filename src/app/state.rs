@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::domain::commit::LogEntry;
-use crate::domain::pull_request::PrInfo;
+use crate::domain::pull_request::{PrCheckInfo, PrInfo};
 use crate::domain::remote::RemoteInfo;
 use crate::domain::repo::{RepositoryDetails, RepositorySummary};
 use crate::domain::status::{ChangedFile, FileSection};
@@ -11,19 +11,27 @@ pub enum View {
     #[default]
     Changes,
     Branches,
-    Log,
-    Remotes,
+    Commits,
+    Pr,
+    Settings,
 }
 
 impl View {
-    pub const ALL: &[View] = &[View::Changes, View::Branches, View::Log, View::Remotes];
+    pub const ALL: &[View] = &[
+        View::Changes,
+        View::Branches,
+        View::Commits,
+        View::Pr,
+        View::Settings,
+    ];
 
     pub fn index(&self) -> usize {
         match self {
             View::Changes => 0,
             View::Branches => 1,
-            View::Log => 2,
-            View::Remotes => 3,
+            View::Commits => 2,
+            View::Pr => 3,
+            View::Settings => 4,
         }
     }
 
@@ -31,8 +39,9 @@ impl View {
         match self {
             View::Changes => "Changes",
             View::Branches => "Branches",
-            View::Log => "Log",
-            View::Remotes => "Remotes",
+            View::Commits => "Commits",
+            View::Pr => "PR",
+            View::Settings => "Settings",
         }
     }
 }
@@ -192,6 +201,8 @@ pub struct AppState {
     pub selected_branch: usize,
     pub selected_log_entry: usize,
     pub selected_remote: usize,
+    pub selected_pr: usize,
+    pub pr_detail_scroll: u16,
     pub log_scroll: u16,
     pub active_view: View,
     pub modal: Modal,
@@ -207,6 +218,8 @@ pub struct AppState {
     pub device_code: Option<crate::app::background::DeviceCodeInfo>,
     pub copilot_authenticated: bool,
     pub create_repo_state: Option<CreateRepoState>,
+    pub pr_checks_cache: Vec<PrCheckInfo>,
+    pub amend_mode: bool,
 }
 
 impl Default for AppState {
@@ -218,6 +231,8 @@ impl Default for AppState {
             selected_branch: 0,
             selected_log_entry: 0,
             selected_remote: 0,
+            selected_pr: 0,
+            pr_detail_scroll: 0,
             log_scroll: 0,
             active_view: View::default(),
             modal: Modal::None,
@@ -233,6 +248,8 @@ impl Default for AppState {
             device_code: None,
             copilot_authenticated: false,
             create_repo_state: None,
+            pr_checks_cache: Vec::new(),
+            amend_mode: false,
         }
     }
 }
@@ -285,17 +302,20 @@ impl AppState {
             let branch_len = repo.branches.len();
             let log_len = repo.log_entries.len();
             let remote_len = repo.remotes.len();
+            let pr_len = repo.pull_requests.len();
             self.grouped_files = grouped;
             self.selected_file = self.selected_file.min(entry_len.saturating_sub(1));
             self.selected_branch = self.selected_branch.min(branch_len.saturating_sub(1));
             self.selected_log_entry = self.selected_log_entry.min(log_len.saturating_sub(1));
             self.selected_remote = self.selected_remote.min(remote_len.saturating_sub(1));
+            self.selected_pr = self.selected_pr.min(pr_len.saturating_sub(1));
         } else {
             self.grouped_files = GroupedFileList::default();
             self.selected_file = 0;
             self.selected_branch = 0;
             self.selected_log_entry = 0;
             self.selected_remote = 0;
+            self.selected_pr = 0;
         }
     }
 
@@ -426,6 +446,26 @@ impl AppState {
         }
     }
 
+    pub fn select_next_pr(&mut self) {
+        if let Some(repo) = self.selected_repo_ref()
+            && !repo.pull_requests.is_empty()
+        {
+            self.selected_pr = (self.selected_pr + 1) % repo.pull_requests.len();
+        }
+    }
+
+    pub fn select_previous_pr(&mut self) {
+        if let Some(repo) = self.selected_repo_ref()
+            && !repo.pull_requests.is_empty()
+        {
+            self.selected_pr = if self.selected_pr == 0 {
+                repo.pull_requests.len() - 1
+            } else {
+                self.selected_pr - 1
+            };
+        }
+    }
+
     pub fn open_branch_switch(&mut self) {
         self.modal = Modal::BranchSwitch;
         self.selected_branch = self.current_branch_index().unwrap_or(0);
@@ -446,6 +486,7 @@ impl AppState {
         self.branch_name_input.clear();
         self.commit_message_input.clear();
         self.create_repo_state = None;
+        self.amend_mode = false;
     }
 
     pub fn current_branch_index(&self) -> Option<usize> {

@@ -59,8 +59,9 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
     match state.active_view {
         View::Changes => compute_changes_suggestions(state),
         View::Branches => compute_branches_suggestions(state),
-        View::Log => compute_log_suggestions(state),
-        View::Remotes => compute_remotes_suggestions(state),
+        View::Commits => compute_commits_suggestions(state),
+        View::Pr => compute_pr_suggestions(state),
+        View::Settings => compute_settings_suggestions(state),
     }
 }
 
@@ -169,7 +170,7 @@ fn compute_branches_suggestions(state: &AppState) -> Vec<Suggestion> {
     suggestions
 }
 
-fn compute_log_suggestions(_state: &AppState) -> Vec<Suggestion> {
+fn compute_commits_suggestions(_state: &AppState) -> Vec<Suggestion> {
     vec![
         Suggestion {
             key_hint: "j/k",
@@ -186,7 +187,35 @@ fn compute_log_suggestions(_state: &AppState) -> Vec<Suggestion> {
     ]
 }
 
-fn compute_remotes_suggestions(state: &AppState) -> Vec<Suggestion> {
+fn compute_pr_suggestions(state: &AppState) -> Vec<Suggestion> {
+    let mut suggestions = Vec::new();
+
+    if let Some(repo) = state.selected_repo_ref()
+        && !repo.pull_requests.is_empty()
+    {
+        suggestions.push(Suggestion {
+            key_hint: "j/k",
+            label: "navigate",
+        });
+        suggestions.push(Suggestion {
+            key_hint: "Enter",
+            label: "open in browser",
+        });
+    }
+
+    suggestions.push(Suggestion {
+        key_hint: "r",
+        label: "refresh PRs",
+    });
+    suggestions.push(Suggestion {
+        key_hint: "?",
+        label: "help",
+    });
+
+    suggestions
+}
+
+fn compute_settings_suggestions(state: &AppState) -> Vec<Suggestion> {
     let mut suggestions = Vec::new();
 
     if let Some(repo) = state.selected_repo_ref() {

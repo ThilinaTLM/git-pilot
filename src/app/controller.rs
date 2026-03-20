@@ -140,6 +140,7 @@ impl AppController {
             AppAction::OpenBranchSwitch => self.state.open_branch_switch(),
             AppAction::OpenBranchCreate => self.state.open_branch_create(),
             AppAction::OpenCommitPanel => self.state.open_commit_panel(),
+            AppAction::OpenCommitAmend => self.open_commit_amend()?,
             AppAction::ConfirmModal => self.confirm_modal()?,
             AppAction::CloseModal => self.state.close_modal(),
             AppAction::ToggleHelp => self.state.show_help = !self.state.show_help,
@@ -163,6 +164,22 @@ impl AppController {
             AppAction::SelectPreviousLogEntry => self.state.select_previous_log_entry(),
             AppAction::SelectNextRemote => self.state.select_next_remote(),
             AppAction::SelectPreviousRemote => self.state.select_previous_remote(),
+            AppAction::SelectNextPr => {
+                self.state.select_next_pr();
+                self.load_pr_checks();
+            }
+            AppAction::SelectPreviousPr => {
+                self.state.select_previous_pr();
+                self.load_pr_checks();
+            }
+            AppAction::OpenPrInBrowser => self.open_pr_in_browser()?,
+            AppAction::RefreshPrs => self.refresh_prs()?,
+            AppAction::ScrollPrDetailDown => {
+                self.state.pr_detail_scroll = self.state.pr_detail_scroll.saturating_add(5);
+            }
+            AppAction::ScrollPrDetailUp => {
+                self.state.pr_detail_scroll = self.state.pr_detail_scroll.saturating_sub(5);
+            }
             AppAction::ScrollLogDown => {
                 self.state.log_scroll = self.state.log_scroll.saturating_add(5);
             }
@@ -359,6 +376,65 @@ impl AppController {
         self.reload_selected_repo()?;
         self.state.set_info(format!("Created repository: {url}"));
         Ok(())
+    }
+
+    fn open_pr_in_browser(&mut self) -> Result<()> {
+        let repo = self
+            .state
+            .selected_repo_ref()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+        let pr = repo
+            .pull_requests
+            .get(self.state.selected_pr)
+            .ok_or_else(|| anyhow!("no PR selected"))?;
+        let repo_path = repo.summary.path.clone();
+        let number = pr.number;
+        let mut command = std::process::Command::new("gh");
+        command
+            .current_dir(&repo_path)
+            .arg("pr")
+            .arg("view")
+            .arg(number.to_string())
+            .arg("--web");
+        crate::infrastructure::process::run_command(&mut command)?;
+        self.state.set_info(format!("Opened PR #{number} in browser"));
+        Ok(())
+    }
+
+    fn refresh_prs(&mut self) -> Result<()> {
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+        let prs = self.github.list_prs(&repo_path).unwrap_or_default();
+        let count = prs.len();
+        if let Some(repo) = self.state.repos.get_mut(self.state.selected_repo) {
+            repo.pull_requests = prs;
+        }
+        self.load_pr_checks();
+        self.state.set_info(format!("Loaded {count} pull requests"));
+        Ok(())
+    }
+
+    fn load_pr_checks(&mut self) {
+        let Some(repo_path) = self.state.selected_repo_path() else {
+            self.state.pr_checks_cache.clear();
+            return;
+        };
+        let Some(repo) = self.state.selected_repo_ref() else {
+            self.state.pr_checks_cache.clear();
+            return;
+        };
+        let Some(pr) = repo.pull_requests.get(self.state.selected_pr) else {
+            self.state.pr_checks_cache.clear();
+            return;
+        };
+        let number = pr.number;
+        self.state.pr_checks_cache = self
+            .github
+            .pr_checks(&repo_path, number)
+            .unwrap_or_default();
+        self.state.pr_detail_scroll = 0;
     }
 
     fn select_repo_by_index(&mut self, idx: usize) {
@@ -596,21 +672,44 @@ impl AppController {
         Ok(())
     }
 
+    fn open_commit_amend(&mut self) -> Result<()> {
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+        let last_message = self.git.last_commit_message(&repo_path)?;
+        if last_message.is_empty() {
+            return Err(anyhow!("no previous commit to amend"));
+        }
+        self.state.amend_mode = true;
+        self.state.commit_message_input = last_message;
+        self.state.modal = Modal::Commit;
+        Ok(())
+    }
+
     fn confirm_commit(&mut self) -> Result<()> {
         let repo = self
             .state
             .selected_repo_ref()
             .ok_or_else(|| anyhow!("no repository selected"))?;
-        if repo.status_files.iter().all(|file| !file.staged) {
+
+        let amend = self.state.amend_mode;
+
+        if !amend && repo.status_files.iter().all(|file| !file.staged) {
             return Err(anyhow!("no staged changes to commit"));
         }
 
         let message = CommitMessage::try_from(self.state.commit_message_input.clone())?;
-        self.git.commit(&repo.summary.path, &message)?;
+        if amend {
+            self.git.amend_commit(&repo.summary.path, &message)?;
+        } else {
+            self.git.commit(&repo.summary.path, &message)?;
+        }
         self.reload_selected_repo()?;
         self.state.close_modal();
+        let verb = if amend { "Amended" } else { "Committed" };
         self.state
-            .set_info(format!("Committed {}", message.subject()));
+            .set_info(format!("{verb} {}", message.subject()));
         Ok(())
     }
 

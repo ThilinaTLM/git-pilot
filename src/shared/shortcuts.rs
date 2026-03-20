@@ -21,8 +21,8 @@ pub const GLOBAL_SHORTCUTS: &[ShortcutEntry] = &[
         description: "switch between views",
     },
     ShortcutEntry {
-        keys: "1 / 2 / 3 / 4",
-        description: "jump to Changes / Branches / Log / Remotes",
+        keys: "1-5",
+        description: "jump to Changes / Branches / Commits / PR / Settings",
     },
     ShortcutEntry {
         keys: "Alt+1..9",
@@ -70,6 +70,10 @@ pub const CHANGES_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
         keys: "c",
         description: "open commit panel",
+    },
+    ShortcutEntry {
+        keys: "a",
+        description: "amend last commit",
     },
     ShortcutEntry {
         keys: "b",
@@ -124,7 +128,7 @@ pub const BRANCHES_SHORTCUTS: &[ShortcutEntry] = &[
     },
 ];
 
-pub const LOG_SHORTCUTS: &[ShortcutEntry] = &[
+pub const COMMITS_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
         keys: "Down / j",
         description: "select next commit",
@@ -143,7 +147,34 @@ pub const LOG_SHORTCUTS: &[ShortcutEntry] = &[
     },
 ];
 
-pub const REMOTES_SHORTCUTS: &[ShortcutEntry] = &[
+pub const PR_SHORTCUTS: &[ShortcutEntry] = &[
+    ShortcutEntry {
+        keys: "Down / j",
+        description: "select next pull request",
+    },
+    ShortcutEntry {
+        keys: "Up / k",
+        description: "select previous pull request",
+    },
+    ShortcutEntry {
+        keys: "Enter",
+        description: "open PR in browser",
+    },
+    ShortcutEntry {
+        keys: "r",
+        description: "refresh pull requests",
+    },
+    ShortcutEntry {
+        keys: "PageDown / Ctrl+d",
+        description: "scroll PR detail down",
+    },
+    ShortcutEntry {
+        keys: "PageUp / Ctrl+u",
+        description: "scroll PR detail up",
+    },
+];
+
+pub const SETTINGS_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
         keys: "Down / j",
         description: "select next remote",

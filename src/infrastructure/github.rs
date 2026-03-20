@@ -4,7 +4,9 @@ use std::process::Command;
 use anyhow::{Result, anyhow};
 use serde::Deserialize;
 
-use crate::domain::pull_request::{CreatePrParams, PrInfo, PrState};
+use crate::domain::pull_request::{
+    CheckConclusion, CheckStatus, CreatePrParams, PrCheckInfo, PrInfo, PrState,
+};
 use crate::domain::remote::{CreateRepoParams, RepoVisibility};
 use crate::infrastructure::process::run_command;
 
@@ -64,6 +66,43 @@ impl GhCliGitHubService {
         Ok(url)
     }
 
+    pub fn pr_checks(&self, repo_path: &Path, pr_number: u32) -> Result<Vec<PrCheckInfo>> {
+        let mut command = Command::new("gh");
+        command
+            .current_dir(repo_path)
+            .arg("pr")
+            .arg("checks")
+            .arg(pr_number.to_string())
+            .arg("--json")
+            .arg("name,state,conclusion");
+
+        let output = match run_command(&mut command) {
+            Ok(o) => o,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        let raw = String::from_utf8_lossy(&output.stdout);
+        let items: Vec<GhCheckJson> = serde_json::from_str(&raw).unwrap_or_default();
+        Ok(items
+            .into_iter()
+            .map(|c| PrCheckInfo {
+                name: c.name,
+                status: match c.state.to_uppercase().as_str() {
+                    "QUEUED" | "PENDING" | "WAITING" => CheckStatus::Queued,
+                    "IN_PROGRESS" => CheckStatus::InProgress,
+                    _ => CheckStatus::Completed,
+                },
+                conclusion: c.conclusion.as_deref().map(|s| match s.to_uppercase().as_str() {
+                    "FAILURE" | "ACTION_REQUIRED" => CheckConclusion::Failure,
+                    "CANCELLED" => CheckConclusion::Cancelled,
+                    "SKIPPED" | "NEUTRAL" => CheckConclusion::Skipped,
+                    "TIMED_OUT" | "STARTUP_FAILURE" => CheckConclusion::TimedOut,
+                    _ => CheckConclusion::Success,
+                }),
+            })
+            .collect())
+    }
+
     pub fn list_prs(&self, repo_path: &Path) -> Result<Vec<PrInfo>> {
         let mut command = Command::new("gh");
         command
@@ -110,4 +149,11 @@ struct GhPrJson {
     state: String,
     url: String,
     head_ref_name: String,
+}
+
+#[derive(Deserialize)]
+struct GhCheckJson {
+    name: String,
+    state: String,
+    conclusion: Option<String>,
 }

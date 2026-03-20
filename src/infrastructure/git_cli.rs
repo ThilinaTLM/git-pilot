@@ -29,6 +29,8 @@ pub trait GitRepositoryService {
     fn log_entries(&self, repo_path: &Path, limit: usize) -> Result<Vec<LogEntry>>;
     fn list_remotes(&self, repo_path: &Path) -> Result<Vec<RemoteInfo>>;
     fn has_remote(&self, repo_path: &Path, name: &str) -> bool;
+    fn amend_commit(&self, repo_path: &Path, message: &CommitMessage) -> Result<()>;
+    fn last_commit_message(&self, repo_path: &Path) -> Result<String>;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -200,6 +202,22 @@ impl GitRepositoryService for GitCliRepositoryService {
         self.list_remotes(repo_path)
             .map(|remotes| remotes.iter().any(|r| r.name == name))
             .unwrap_or(false)
+    }
+
+    fn amend_commit(&self, repo_path: &Path, message: &CommitMessage) -> Result<()> {
+        let mut command = base_git_command(repo_path);
+        command.arg("commit").arg("--amend");
+        for message_part in message.git_message_args() {
+            command.arg("-m").arg(message_part);
+        }
+        run_command(&mut command).map(|_| ())
+    }
+
+    fn last_commit_message(&self, repo_path: &Path) -> Result<String> {
+        let mut command = base_git_command(repo_path);
+        command.arg("log").arg("-1").arg("--format=%B");
+        let output = run_command(&mut command)?;
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 }
 

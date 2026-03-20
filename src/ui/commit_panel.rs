@@ -9,7 +9,12 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let modal = centered_rect(60, 55, area);
     frame.render_widget(Clear, modal);
 
-    let block = theme::modal_elevated_block("Commit");
+    let title = if state.amend_mode {
+        "Amend Commit"
+    } else {
+        "Commit"
+    };
+    let block = theme::modal_elevated_block(title);
     let inner = block.inner(modal);
     frame.render_widget(block, modal);
 
@@ -32,16 +37,33 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         .selected_repo_ref()
         .map(|r| r.status_files.iter().filter(|f| f.staged).count())
         .unwrap_or(0);
-    let desc = Line::from(vec![
-        Span::styled("Committing ", theme::modal_muted_style()),
-        Span::styled(
-            format!(
-                "{staged_count} staged file{}",
-                if staged_count == 1 { "" } else { "s" }
+    let desc = if state.amend_mode {
+        Line::from(vec![
+            Span::styled("Amending last commit", theme::modal_accent_style()),
+            if staged_count > 0 {
+                Span::styled(
+                    format!(
+                        " with {staged_count} staged file{}",
+                        if staged_count == 1 { "" } else { "s" }
+                    ),
+                    theme::modal_muted_style(),
+                )
+            } else {
+                Span::styled(" (message only)", theme::modal_muted_style())
+            },
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled("Committing ", theme::modal_muted_style()),
+            Span::styled(
+                format!(
+                    "{staged_count} staged file{}",
+                    if staged_count == 1 { "" } else { "s" }
+                ),
+                theme::modal_accent_style(),
             ),
-            theme::modal_accent_style(),
-        ),
-    ]);
+        ])
+    };
     frame.render_widget(Paragraph::new(desc), layout[0]);
 
     // Parse subject and body from input

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+#[derive(Clone, Debug)]
 pub struct TrackingStatus {
     pub ahead: u32,
     pub behind: u32,

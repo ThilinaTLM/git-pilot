@@ -12,7 +12,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 }
 
 fn render_log_list(frame: &mut Frame, area: Rect, state: &AppState) {
-    let block = theme::pane_block("Log");
+    let block = theme::pane_block("Commits");
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
