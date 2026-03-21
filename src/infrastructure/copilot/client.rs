@@ -87,6 +87,11 @@ impl AiService for CopilotAiService {
         }
     }
 
+    fn generate_branch_name(&self, diff: &str) -> Result<String> {
+        let content = self.chat_completion(prompts::branch_name_system_prompt(), diff)?;
+        Ok(content.trim().to_string())
+    }
+
     fn generate_pr_description(&self, commits: &str, diff: &str) -> Result<GeneratedPrDescription> {
         let truncated_diff = truncate_pr_diff(diff);
         let user_content = format!("## Commits\n{commits}\n\n## Diff\n{truncated_diff}");

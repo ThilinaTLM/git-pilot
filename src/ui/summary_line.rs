@@ -14,6 +14,18 @@ pub fn build_spans(state: &AppState) -> Vec<Span<'static>> {
 
     let mut spans: Vec<Span> = Vec::new();
 
+    // Show spinner + job labels when background jobs are active
+    if state.has_active_jobs() {
+        let labels: Vec<&str> = state.active_jobs.iter().map(|j| j.kind.label()).collect();
+        let label = labels.join(", ");
+        spans.push(Span::styled(
+            format!(" {} ", state.spinner_char()),
+            theme::accent_text_style(),
+        ));
+        spans.push(Span::styled(label, theme::text_style()));
+        return spans;
+    }
+
     // Branch name
     let branch = repo.current_branch.as_deref().unwrap_or("(detached)");
     spans.push(Span::styled(

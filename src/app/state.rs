@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::app::background::{ActiveJob, JobId, JobKind};
 use crate::domain::commit::LogEntry;
 use crate::domain::pull_request::{PrCheckInfo, PrInfo};
 use crate::domain::remote::RemoteInfo;
@@ -216,13 +217,16 @@ pub struct AppState {
     pub grouped_files: GroupedFileList,
     pub diff_content: Option<String>,
     pub diff_scroll: u16,
-    pub ai_loading: bool,
+    pub active_jobs: Vec<ActiveJob>,
+    pub spinner_tick: u8,
     pub device_code: Option<crate::app::background::DeviceCodeInfo>,
     pub copilot_authenticated: bool,
     pub create_repo_state: Option<CreateRepoState>,
     pub pr_checks_cache: Vec<PrCheckInfo>,
     pub amend_mode: bool,
     pub branch_tracking: Option<TrackingStatus>,
+    pub branch_filter: String,
+    pub filtered_branches: Vec<usize>,
     pub settings: AppSettings,
     pub selected_settings_item: usize,
 }
@@ -249,13 +253,16 @@ impl Default for AppState {
             grouped_files: GroupedFileList::default(),
             diff_content: None,
             diff_scroll: 0,
-            ai_loading: false,
+            active_jobs: Vec::new(),
+            spinner_tick: 0,
             device_code: None,
             copilot_authenticated: false,
             create_repo_state: None,
             pr_checks_cache: Vec::new(),
             amend_mode: false,
             branch_tracking: None,
+            branch_filter: String::new(),
+            filtered_branches: Vec::new(),
             settings: AppSettings::default(),
             selected_settings_item: 0,
         }
@@ -307,13 +314,11 @@ impl AppState {
         if let Some(repo) = self.repos.get(self.selected_repo) {
             let grouped = GroupedFileList::build(&repo.status_files);
             let entry_len = grouped.entries.len();
-            let branch_len = repo.branches.len();
             let log_len = repo.log_entries.len();
             let remote_len = repo.remotes.len();
             let pr_len = repo.pull_requests.len();
             self.grouped_files = grouped;
             self.selected_file = self.selected_file.min(entry_len.saturating_sub(1));
-            self.selected_branch = self.selected_branch.min(branch_len.saturating_sub(1));
             self.selected_log_entry = self.selected_log_entry.min(log_len.saturating_sub(1));
             self.selected_remote = self.selected_remote.min(remote_len.saturating_sub(1));
             self.selected_pr = self.selected_pr.min(pr_len.saturating_sub(1));
@@ -325,6 +330,7 @@ impl AppState {
             self.selected_remote = 0;
             self.selected_pr = 0;
         }
+        self.recompute_branch_filter();
     }
 
     pub fn switch_view(&mut self, view: View) {
@@ -395,19 +401,17 @@ impl AppState {
     }
 
     pub fn select_next_branch(&mut self) {
-        if let Some(repo) = self.selected_repo_ref()
-            && !repo.branches.is_empty()
-        {
-            self.selected_branch = (self.selected_branch + 1) % repo.branches.len();
+        let len = self.filtered_branches.len();
+        if len > 0 {
+            self.selected_branch = (self.selected_branch + 1) % len;
         }
     }
 
     pub fn select_previous_branch(&mut self) {
-        if let Some(repo) = self.selected_repo_ref()
-            && !repo.branches.is_empty()
-        {
+        let len = self.filtered_branches.len();
+        if len > 0 {
             self.selected_branch = if self.selected_branch == 0 {
-                repo.branches.len() - 1
+                len - 1
             } else {
                 self.selected_branch - 1
             };
@@ -476,7 +480,15 @@ impl AppState {
 
     pub fn open_branch_switch(&mut self) {
         self.modal = Modal::BranchSwitch;
-        self.selected_branch = self.current_branch_index().unwrap_or(0);
+        self.branch_filter.clear();
+        self.recompute_branch_filter();
+        // Map real branch index to filtered index
+        let real_idx = self.current_branch_index().unwrap_or(0);
+        self.selected_branch = self
+            .filtered_branches
+            .iter()
+            .position(|&i| i == real_idx)
+            .unwrap_or(0);
     }
 
     pub fn open_branch_create(&mut self) {
@@ -492,9 +504,11 @@ impl AppState {
     pub fn close_modal(&mut self) {
         self.modal = Modal::None;
         self.branch_name_input.clear();
+        self.branch_filter.clear();
         self.commit_message_input.clear();
         self.create_repo_state = None;
         self.amend_mode = false;
+        self.recompute_branch_filter();
     }
 
     pub fn current_branch_index(&self) -> Option<usize> {
@@ -528,11 +542,40 @@ impl AppState {
         self.selected_file_entry().map(|e| e.section)
     }
 
+    pub fn recompute_branch_filter(&mut self) {
+        let branches = match self.selected_repo_ref() {
+            Some(repo) => &repo.branches,
+            None => {
+                self.filtered_branches.clear();
+                return;
+            }
+        };
+
+        if self.branch_filter.is_empty() {
+            self.filtered_branches = (0..branches.len()).collect();
+        } else {
+            let filter = self.branch_filter.to_lowercase();
+            self.filtered_branches = branches
+                .iter()
+                .enumerate()
+                .filter(|(_, name)| name.to_lowercase().contains(&filter))
+                .map(|(i, _)| i)
+                .collect();
+        }
+
+        if self.filtered_branches.is_empty() {
+            self.selected_branch = 0;
+        } else {
+            self.selected_branch = self
+                .selected_branch
+                .min(self.filtered_branches.len().saturating_sub(1));
+        }
+    }
+
     pub fn selected_branch_name(&self) -> Option<&str> {
-        self.selected_repo_ref()?
-            .branches
-            .get(self.selected_branch)
-            .map(String::as_str)
+        let repo = self.selected_repo_ref()?;
+        let &real_idx = self.filtered_branches.get(self.selected_branch)?;
+        repo.branches.get(real_idx).map(String::as_str)
     }
 
     pub fn set_info(&mut self, message: impl Into<String>) {
@@ -547,6 +590,41 @@ impl AppState {
             level: MessageLevel::Error,
             text: message.into(),
         });
+    }
+
+    pub fn start_job(&mut self, kind: JobKind) -> JobId {
+        let id = JobId::next();
+        self.active_jobs.push(ActiveJob {
+            id,
+            kind,
+            started_at: std::time::Instant::now(),
+        });
+        id
+    }
+
+    pub fn finish_job(&mut self, id: JobId) {
+        self.active_jobs.retain(|j| j.id != id);
+    }
+
+    pub fn is_job_running(&self, kind: &JobKind) -> bool {
+        self.active_jobs.iter().any(|j| &j.kind == kind)
+    }
+
+    pub fn has_active_jobs(&self) -> bool {
+        !self.active_jobs.is_empty()
+    }
+
+    pub fn ai_loading(&self) -> bool {
+        self.is_job_running(&JobKind::AiCommitMessage)
+    }
+
+    pub fn ai_branch_loading(&self) -> bool {
+        self.is_job_running(&JobKind::AiBranchName)
+    }
+
+    pub fn spinner_char(&self) -> char {
+        const FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+        FRAMES[self.spinner_tick as usize % FRAMES.len()]
     }
 }
 

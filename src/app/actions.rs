@@ -48,6 +48,7 @@ pub enum AppAction {
     PreviousView,
     DeleteBranch,
     MergeBranch,
+    GenerateBranchName,
     GenerateCommitMessage,
     CopilotLogin,
     ToggleVisibility,
@@ -62,6 +63,11 @@ pub enum AppAction {
     DecreaseAutoFetchInterval,
     SelectNextSettingsItem,
     SelectPreviousSettingsItem,
+    SelectFile(usize),
+    SelectBranch(usize),
+    SelectLogEntry(usize),
+    SelectPr(usize),
+    SelectSettingsItem(usize),
 }
 
 pub fn map_key_event(view: &View, modal: &Modal, key_event: KeyEvent) -> AppAction {
@@ -84,7 +90,7 @@ fn map_modal_key(modal: &Modal, key_event: KeyEvent) -> AppAction {
     match modal {
         Modal::None => AppAction::Noop,
         Modal::BranchSwitch => map_branch_switch_key(key_event),
-        Modal::BranchCreate => map_text_input_key(key_event, false),
+        Modal::BranchCreate => map_branch_create_key(key_event),
         Modal::Commit => map_commit_input_key(key_event),
         Modal::CopilotLogin => match key_event.code {
             KeyCode::Esc => AppAction::CloseModal,
@@ -151,6 +157,7 @@ fn map_branches_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextBranch,
         KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousBranch,
         KeyCode::Enter => AppAction::ConfirmModal,
+        KeyCode::Char('/') => AppAction::OpenBranchSwitch,
         KeyCode::Char('n') => AppAction::OpenBranchCreate,
         KeyCode::Char('d') => AppAction::DeleteBranch,
         KeyCode::Char('m') => AppAction::MergeBranch,
@@ -243,8 +250,12 @@ fn map_branch_switch_key(key_event: KeyEvent) -> AppAction {
     match key_event.code {
         KeyCode::Esc => AppAction::CloseModal,
         KeyCode::Enter => AppAction::ConfirmModal,
-        KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextBranch,
-        KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousBranch,
+        KeyCode::Down => AppAction::SelectNextBranch,
+        KeyCode::Up => AppAction::SelectPreviousBranch,
+        KeyCode::Backspace => AppAction::Backspace,
+        KeyCode::Char(ch) if !key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+            AppAction::InsertChar(ch)
+        }
         _ => AppAction::Noop,
     }
 }
@@ -268,21 +279,20 @@ fn map_commit_input_key(key_event: KeyEvent) -> AppAction {
     }
 }
 
-fn map_text_input_key(key_event: KeyEvent, allow_newline: bool) -> AppAction {
-    if allow_newline
-        && key_event.modifiers == KeyModifiers::CONTROL
-        && matches!(key_event.code, KeyCode::Char('n'))
-    {
-        return AppAction::InsertNewline;
+fn map_branch_create_key(key_event: KeyEvent) -> AppAction {
+    if key_event.modifiers == KeyModifiers::CONTROL {
+        return match key_event.code {
+            KeyCode::Char('g') => AppAction::GenerateBranchName,
+            KeyCode::Char('l') => AppAction::CopilotLogin,
+            _ => AppAction::Noop,
+        };
     }
 
     match key_event.code {
         KeyCode::Esc => AppAction::CloseModal,
         KeyCode::Enter => AppAction::ConfirmModal,
         KeyCode::Backspace => AppAction::Backspace,
-        KeyCode::Char(ch) if !key_event.modifiers.contains(KeyModifiers::CONTROL) => {
-            AppAction::InsertChar(ch)
-        }
+        KeyCode::Char(ch) => AppAction::InsertChar(ch),
         _ => AppAction::Noop,
     }
 }

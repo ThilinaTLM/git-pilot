@@ -1,6 +1,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
+use crate::app::background::JobKind;
 use crate::app::state::AppState;
 use crate::domain::pull_request::{CheckConclusion, CheckStatus, PrState};
 use crate::ui::layout;
@@ -22,6 +23,18 @@ fn render_pr_list(frame: &mut Frame, area: Rect, state: &AppState) {
         frame.render_widget(empty, inner);
         return;
     };
+
+    if state.is_job_running(&JobKind::ListPrs) {
+        let loading = Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!("{} ", state.spinner_char()),
+                theme::accent_text_style(),
+            ),
+            Span::styled("Loading pull requests...", theme::muted_text_style()),
+        ]));
+        frame.render_widget(loading, inner);
+        return;
+    }
 
     if repo.pull_requests.is_empty() {
         let lines = vec![

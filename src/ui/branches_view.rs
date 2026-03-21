@@ -28,19 +28,26 @@ fn render_branch_list(frame: &mut Frame, area: Rect, state: &AppState) {
         return;
     }
 
-    let branch_count = repo.branches.len();
-    let header = ListItem::new(Line::from(Span::styled(
+    let total_count = repo.branches.len();
+    let filtered_count = state.filtered_branches.len();
+    let header_text = if state.branch_filter.is_empty() {
         format!(
-            "{branch_count} branch{}",
-            if branch_count == 1 { "" } else { "es" }
-        ),
+            "{total_count} branch{}",
+            if total_count == 1 { "" } else { "es" }
+        )
+    } else {
+        format!("{filtered_count} of {total_count} branches")
+    };
+    let header = ListItem::new(Line::from(Span::styled(
+        header_text,
         theme::section_header_style(),
     )));
 
     let mut items = vec![header];
     let mut row_to_branch: Vec<Option<usize>> = vec![None]; // header row
 
-    for (i, branch) in repo.branches.iter().enumerate() {
+    for (filtered_idx, &real_idx) in state.filtered_branches.iter().enumerate() {
+        let branch = &repo.branches[real_idx];
         let is_current = repo
             .current_branch
             .as_deref()
@@ -56,7 +63,7 @@ fn render_branch_list(frame: &mut Frame, area: Rect, state: &AppState) {
             Span::styled(prefix, style),
             Span::styled(branch.clone(), style),
         ])));
-        row_to_branch.push(Some(i));
+        row_to_branch.push(Some(filtered_idx));
     }
 
     let visual_row = row_to_branch
@@ -162,6 +169,8 @@ fn render_branch_details(frame: &mut Frame, area: Rect, state: &AppState) {
         Span::styled("push", theme::muted_text_style()),
         Span::styled("  P ", theme::accent_text_style()),
         Span::styled("pull", theme::muted_text_style()),
+        Span::styled("  / ", theme::accent_text_style()),
+        Span::styled("filter", theme::muted_text_style()),
     ]));
 
     let paragraph = Paragraph::new(Text::from(lines)).wrap(ratatui::widgets::Wrap { trim: true });

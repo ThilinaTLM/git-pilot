@@ -44,11 +44,16 @@ pub fn render_switch_modal(frame: &mut Frame, area: Rect, state: &AppState) {
     let modal = centered_rect(50, 60, area);
     frame.render_widget(Clear, modal);
 
-    let branch_count = state
+    let total_count = state
         .selected_repo_ref()
         .map(|r| r.branches.len())
         .unwrap_or(0);
-    let title = format!("Switch Branch ({branch_count})");
+    let filtered_count = state.filtered_branches.len();
+    let title = if state.branch_filter.is_empty() {
+        format!("Switch Branch ({total_count})")
+    } else {
+        format!("Switch Branch ({filtered_count} of {total_count})")
+    };
     let block = theme::modal_elevated_block(title);
     let inner = block.inner(modal);
     frame.render_widget(block, modal);
@@ -56,7 +61,9 @@ pub fn render_switch_modal(frame: &mut Frame, area: Rect, state: &AppState) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // description
+            Constraint::Length(1), // current branch
+            Constraint::Length(1), // gap
+            Constraint::Length(3), // filter input
             Constraint::Length(1), // gap
             Constraint::Min(3),    // branch list
             Constraint::Length(1), // gap
@@ -64,7 +71,7 @@ pub fn render_switch_modal(frame: &mut Frame, area: Rect, state: &AppState) {
         ])
         .split(inner);
 
-    // Description
+    // Current branch
     let current = state
         .selected_repo_ref()
         .and_then(|r| r.current_branch.as_deref())
@@ -75,13 +82,45 @@ pub fn render_switch_modal(frame: &mut Frame, area: Rect, state: &AppState) {
     ]);
     frame.render_widget(Paragraph::new(desc), layout[0]);
 
-    // Branch list
+    // Filter input
+    let filter_block = theme::input_block_focused("Filter");
+    let filter_inner = filter_block.inner(layout[2]);
+    frame.render_widget(filter_block, layout[2]);
+
+    let filter_display = if state.branch_filter.is_empty() {
+        Line::from(Span::styled(
+            "type to filter...",
+            Style::default()
+                .fg(Color::Rgb(71, 85, 105))
+                .bg(Color::Rgb(15, 23, 42)),
+        ))
+    } else {
+        Line::from(vec![
+            Span::styled(
+                state.branch_filter.clone(),
+                Style::default()
+                    .fg(Color::Rgb(226, 232, 240))
+                    .bg(Color::Rgb(15, 23, 42)),
+            ),
+            Span::styled(
+                "_",
+                Style::default()
+                    .fg(Color::Rgb(34, 211, 238))
+                    .bg(Color::Rgb(15, 23, 42)),
+            ),
+        ])
+    };
+    frame.render_widget(Paragraph::new(filter_display), filter_inner);
+
+    // Branch list (filtered)
     let items = state
         .selected_repo_ref()
         .map(|repo| {
-            repo.branches
+            state
+                .filtered_branches
                 .iter()
-                .map(|branch| {
+                .map(|&real_idx| {
+                    let branch = &repo.branches[real_idx];
                     let is_current = repo
                         .current_branch
                         .as_deref()
@@ -116,18 +155,18 @@ pub fn render_switch_modal(frame: &mut Frame, area: Rect, state: &AppState) {
         )
         .highlight_symbol(" ▸ ");
 
-    frame.render_stateful_widget(list, layout[2], &mut list_state);
+    frame.render_stateful_widget(list, layout[4], &mut list_state);
 
     // Shortcut bar
     let shortcuts = Line::from(vec![
-        Span::styled("j/k ", theme::modal_accent_style()),
+        Span::styled("↑/↓ ", theme::modal_accent_style()),
         Span::styled("navigate", theme::modal_muted_style()),
         Span::styled("  Enter ", theme::modal_accent_style()),
         Span::styled("switch", theme::modal_muted_style()),
         Span::styled("  Esc ", theme::modal_accent_style()),
         Span::styled("cancel", theme::modal_muted_style()),
     ]);
-    frame.render_widget(Paragraph::new(shortcuts), layout[4]);
+    frame.render_widget(Paragraph::new(shortcuts), layout[6]);
 }
 
 pub fn render_create_modal(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -159,11 +198,23 @@ pub fn render_create_modal(frame: &mut Frame, area: Rect, state: &AppState) {
     frame.render_widget(Paragraph::new(desc), layout[0]);
 
     // Input field
-    let input_block = theme::input_block_focused("Branch name");
+    let input_label = if state.ai_branch_loading() {
+        "Branch name (generating with AI...)"
+    } else {
+        "Branch name"
+    };
+    let input_block = theme::input_block_focused(input_label);
     let input_inner = input_block.inner(layout[2]);
     frame.render_widget(input_block, layout[2]);
 
-    let input_display = if state.branch_name_input.is_empty() {
+    let input_display = if state.ai_branch_loading() {
+        Line::from(Span::styled(
+            "Generating with AI...",
+            Style::default()
+                .fg(Color::Rgb(34, 211, 238))
+                .bg(Color::Rgb(15, 23, 42)),
+        ))
+    } else if state.branch_name_input.is_empty() {
         Line::from(Span::styled(
             "feature/my-branch...",
             Style::default()
@@ -200,11 +251,26 @@ pub fn render_create_modal(frame: &mut Frame, area: Rect, state: &AppState) {
     frame.render_widget(Paragraph::new(from_line), layout[4]);
 
     // Shortcut bar
-    let shortcuts = Line::from(vec![
+    let ai_shortcut = if state.copilot_authenticated {
+        vec![
+            Span::styled("  Ctrl+g ", theme::modal_accent_style()),
+            Span::styled("generate", theme::modal_muted_style()),
+        ]
+    } else {
+        vec![
+            Span::styled("  Ctrl+l ", theme::modal_accent_style()),
+            Span::styled("login", theme::modal_muted_style()),
+        ]
+    };
+    let mut shortcut_spans = vec![
         Span::styled("Enter ", theme::modal_accent_style()),
         Span::styled("create", theme::modal_muted_style()),
+    ];
+    shortcut_spans.extend(ai_shortcut);
+    shortcut_spans.extend(vec![
         Span::styled("  Esc ", theme::modal_accent_style()),
         Span::styled("cancel", theme::modal_muted_style()),
     ]);
+    let shortcuts = Line::from(shortcut_spans);
     frame.render_widget(Paragraph::new(shortcuts), layout[6]);
 }

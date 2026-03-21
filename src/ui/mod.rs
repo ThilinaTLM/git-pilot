@@ -7,6 +7,7 @@ pub mod diff_panel;
 pub mod help;
 pub mod layout;
 pub mod log_view;
+pub mod mouse;
 pub mod pr_view;
 pub mod remotes_view;
 pub mod screen;

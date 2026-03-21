@@ -12,6 +12,17 @@ pub fn commit_message_system_prompt() -> &'static str {
      Output ONLY the commit message, nothing else. No markdown formatting, no code fences."
 }
 
+pub fn branch_name_system_prompt() -> &'static str {
+    "You are an expert at naming git branches.\n\
+     Given a diff of staged changes, generate a single branch name.\n\n\
+     Rules:\n\
+     - Use conventional prefix: feat/, fix/, refactor/, docs/, test/, chore/\n\
+     - Use lowercase kebab-case after the prefix (e.g., feat/add-user-auth)\n\
+     - Keep it under 50 characters total\n\
+     - Be specific but concise\n\n\
+     Output ONLY the branch name, nothing else. No quotes, no explanation."
+}
+
 pub fn pr_description_system_prompt() -> &'static str {
     "You are an expert at writing clear pull request descriptions.\n\
      Given a list of commits and a diff, produce a PR title and description.\n\n\

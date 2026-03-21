@@ -71,7 +71,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let (subject, body) = split_subject_body(input);
 
     // Subject input field
-    let subject_label = if state.ai_loading {
+    let subject_label = if state.ai_loading() {
         "Subject (generating with AI...)"
     } else if subject.is_empty() {
         "Subject (required)"
@@ -86,7 +86,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let subject_inner = subject_block.inner(layout[2]);
     frame.render_widget(subject_block, layout[2]);
 
-    let subject_display = if state.ai_loading {
+    let subject_display = if state.ai_loading() {
         Line::from(Span::styled(
             "Generating with AI...",
             Style::default()

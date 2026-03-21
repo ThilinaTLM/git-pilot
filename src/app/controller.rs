@@ -4,10 +4,11 @@ use std::sync::mpsc;
 use std::thread;
 
 use anyhow::{Result, anyhow};
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyEvent, MouseEvent};
+use ratatui::layout::Rect;
 
 use crate::app::actions::{AppAction, map_key_event};
-use crate::app::background::{BackgroundResult, DeviceCodeInfo, create_channel};
+use crate::app::background::{BackgroundResult, DeviceCodeInfo, JobKind, create_channel};
 use crate::app::state::{AppState, Modal, RepositoryState};
 use crate::domain::branch::BranchName;
 use crate::domain::commit::CommitMessage;
@@ -24,6 +25,7 @@ use crate::infrastructure::git_cli::{GitCliRepositoryService, GitRepositoryServi
 use crate::infrastructure::git_remote::{GitCliRemoteService, GitRemoteService};
 use crate::infrastructure::github::GhCliGitHubService;
 use crate::infrastructure::repo_discovery::{RepositoryDiscovery, WalkDirRepositoryDiscovery};
+use crate::ui::mouse::map_mouse_event;
 
 pub struct AppController {
     state: AppState,
@@ -66,7 +68,7 @@ impl AppController {
         };
         controller.state.copilot_authenticated = copilot_authenticated;
         controller.state.settings = config::load_settings();
-        controller.refresh_repositories()?;
+        controller.refresh_repositories_sync()?;
         controller.load_tracking_status();
         Ok(controller)
     }
@@ -75,20 +77,32 @@ impl AppController {
         &self.state
     }
 
+    pub fn tick_spinner(&mut self) {
+        if self.state.has_active_jobs() {
+            self.state.spinner_tick = self.state.spinner_tick.wrapping_add(1) % 10;
+        }
+    }
+
     pub fn auto_fetch(&mut self) {
-        if let Some(repo_path) = self.state.selected_repo_path()
-            && self.remote.fetch(&repo_path).is_ok()
+        if self.state.selected_repo_path().is_some() && !self.state.is_job_running(&JobKind::Fetch)
         {
-            let _ = self.reload_selected_repo();
-            self.load_tracking_status();
+            let _ = self.fetch_remote();
         }
     }
 
     pub fn check_background_results(&mut self) {
         while let Ok(result) = self.bg_receiver.try_recv() {
             match result {
-                BackgroundResult::CommitMessageGenerated(Ok(msg)) => {
-                    self.state.ai_loading = false;
+                BackgroundResult::BranchNameGenerated(job_id, Ok(name)) => {
+                    self.state.finish_job(job_id);
+                    self.state.branch_name_input = name;
+                }
+                BackgroundResult::BranchNameGenerated(job_id, Err(e)) => {
+                    self.state.finish_job(job_id);
+                    self.state.set_error(format!("AI branch name failed: {e}"));
+                }
+                BackgroundResult::CommitMessageGenerated(job_id, Ok(msg)) => {
+                    self.state.finish_job(job_id);
                     let mut text = msg.subject;
                     if let Some(body) = msg.body {
                         text.push('\n');
@@ -96,19 +110,21 @@ impl AppController {
                     }
                     self.state.commit_message_input = text;
                 }
-                BackgroundResult::CommitMessageGenerated(Err(e)) => {
-                    self.state.ai_loading = false;
+                BackgroundResult::CommitMessageGenerated(job_id, Err(e)) => {
+                    self.state.finish_job(job_id);
                     self.state.set_error(format!("AI generation failed: {e}"));
                 }
-                BackgroundResult::DeviceCodeReceived(Ok(info)) => {
+                BackgroundResult::DeviceCodeReceived(job_id, Ok(info)) => {
+                    self.state.finish_job(job_id);
                     self.state.device_code = Some(info);
                     self.state.modal = Modal::CopilotLogin;
                 }
-                BackgroundResult::DeviceCodeReceived(Err(e)) => {
+                BackgroundResult::DeviceCodeReceived(job_id, Err(e)) => {
+                    self.state.finish_job(job_id);
                     self.state.set_error(format!("Device flow failed: {e}"));
                 }
-                BackgroundResult::LoginCompleted(Ok(())) => {
-                    // Reconstruct AI service from saved auth
+                BackgroundResult::LoginCompleted(job_id, Ok(())) => {
+                    self.state.finish_job(job_id);
                     if let Ok(auth) = load_auth() {
                         let token_manager = CopilotTokenManager::new(auth.oauth_token);
                         let service = CopilotAiService::new(token_manager, "gpt-4o".to_string());
@@ -119,10 +135,106 @@ impl AppController {
                     self.state.modal = Modal::None;
                     self.state.set_info("Logged in to GitHub Copilot");
                 }
-                BackgroundResult::LoginCompleted(Err(e)) => {
+                BackgroundResult::LoginCompleted(job_id, Err(e)) => {
+                    self.state.finish_job(job_id);
                     self.state.device_code = None;
                     self.state.modal = Modal::None;
                     self.state.set_error(format!("Copilot login failed: {e}"));
+                }
+                BackgroundResult::FetchCompleted(job_id, result) => {
+                    self.state.finish_job(job_id);
+                    match result {
+                        Ok(()) => {
+                            let _ = self.reload_selected_repo();
+                            self.load_tracking_status();
+                            self.state.set_info("Fetched from remote");
+                        }
+                        Err(e) => self.state.set_error(format!("Fetch failed: {e}")),
+                    }
+                }
+                BackgroundResult::PushCompleted(job_id, result) => {
+                    self.state.finish_job(job_id);
+                    match result {
+                        Ok(()) => {
+                            let _ = self.reload_selected_repo();
+                            self.load_tracking_status();
+                            self.state.set_info("Pushed to remote");
+                        }
+                        Err(e) => self.state.set_error(format!("Push failed: {e}")),
+                    }
+                }
+                BackgroundResult::PullCompleted(job_id, result) => {
+                    self.state.finish_job(job_id);
+                    match result {
+                        Ok(()) => {
+                            let _ = self.reload_selected_repo();
+                            self.load_tracking_status();
+                            self.state.set_info("Pulled from remote");
+                        }
+                        Err(e) => self.state.set_error(format!("Pull failed: {e}")),
+                    }
+                }
+                BackgroundResult::PrsLoaded(job_id, result) => {
+                    self.state.finish_job(job_id);
+                    match result {
+                        Ok(prs) => {
+                            let count = prs.len();
+                            if let Some(repo) = self.state.repos.get_mut(self.state.selected_repo) {
+                                repo.pull_requests = prs;
+                            }
+                            self.load_pr_checks();
+                            self.state.set_info(format!("Loaded {count} pull requests"));
+                        }
+                        Err(e) => {
+                            self.state.set_error(format!("Failed to load PRs: {e}"));
+                        }
+                    }
+                }
+                BackgroundResult::PrChecksLoaded(job_id, result) => {
+                    self.state.finish_job(job_id);
+                    match result {
+                        Ok(checks) => {
+                            self.state.pr_checks_cache = checks;
+                            self.state.pr_detail_scroll = 0;
+                        }
+                        Err(_) => {
+                            self.state.pr_checks_cache.clear();
+                        }
+                    }
+                }
+                BackgroundResult::ReposRefreshed(job_id, result) => {
+                    self.state.finish_job(job_id);
+                    match result {
+                        Ok(repos) => {
+                            let selected_path = self.state.selected_repo_path();
+                            let count = repos.len();
+                            self.state.set_repositories(repos, selected_path);
+                            if count == 0 {
+                                self.state.set_info(
+                                    "No Git repositories found in the current directory or descendants",
+                                );
+                            } else {
+                                self.state.set_info(format!("Loaded {count} repositories"));
+                            }
+                        }
+                        Err(e) => {
+                            self.state
+                                .set_error(format!("Failed to refresh repositories: {e}"));
+                        }
+                    }
+                }
+                BackgroundResult::RepoCreated(job_id, result) => {
+                    self.state.finish_job(job_id);
+                    match result {
+                        Ok(url) => {
+                            let _ = self.reload_selected_repo();
+                            self.state.set_info(format!("Created repository: {url}"));
+                        }
+                        Err(e) => {
+                            self.state
+                                .set_error(format!("Failed to create repository: {e}"));
+                        }
+                    }
                 }
             }
         }
@@ -130,6 +242,18 @@ impl AppController {
 
     pub fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<()> {
         let action = map_key_event(&self.state.active_view, &self.state.modal, key_event);
+        if let Err(error) = self.dispatch(action) {
+            self.state.set_error(error.to_string());
+        }
+        Ok(())
+    }
+
+    pub fn handle_mouse_event(
+        &mut self,
+        mouse_event: MouseEvent,
+        terminal_area: Rect,
+    ) -> Result<()> {
+        let action = map_mouse_event(mouse_event, terminal_area, &self.state);
         if let Err(error) = self.dispatch(action) {
             self.state.set_error(error.to_string());
         }
@@ -173,6 +297,7 @@ impl AppController {
             AppAction::PreviousView => self.state.previous_view(),
             AppAction::DeleteBranch => self.delete_branch()?,
             AppAction::MergeBranch => self.merge_branch()?,
+            AppAction::GenerateBranchName => self.generate_branch_name()?,
             AppAction::GenerateCommitMessage => self.generate_commit_message()?,
             AppAction::CopilotLogin => self.copilot_login(),
             AppAction::SelectNextLogEntry => self.state.select_next_log_entry(),
@@ -223,10 +348,68 @@ impl AppController {
                     self.state.selected_settings_item - 1
                 };
             }
+            AppAction::SelectFile(idx) => {
+                let len = self.state.grouped_files.entries.len();
+                if idx < len {
+                    self.state.selected_file = idx;
+                }
+            }
+            AppAction::SelectBranch(idx) => {
+                if idx < self.state.filtered_branches.len() {
+                    self.state.selected_branch = idx;
+                }
+            }
+            AppAction::SelectLogEntry(idx) => {
+                if let Some(repo) = self.state.selected_repo_ref()
+                    && idx < repo.log_entries.len()
+                {
+                    self.state.selected_log_entry = idx;
+                }
+            }
+            AppAction::SelectPr(idx) => {
+                if let Some(repo) = self.state.selected_repo_ref()
+                    && idx < repo.pull_requests.len()
+                {
+                    self.state.selected_pr = idx;
+                    self.load_pr_checks();
+                }
+            }
+            AppAction::SelectSettingsItem(idx) => {
+                if idx < 2 {
+                    self.state.selected_settings_item = idx;
+                }
+            }
         }
 
         self.state.sync_selection();
         self.refresh_diff();
+        Ok(())
+    }
+
+    fn generate_branch_name(&mut self) -> Result<()> {
+        let ai = self
+            .ai_service
+            .clone()
+            .ok_or_else(|| anyhow!("not logged in to Copilot — press Ctrl+l to login"))?;
+
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+
+        let context = prepare_diff_context(&self.git, &repo_path)?;
+        if context.trim().is_empty() {
+            return Err(anyhow!("no staged changes to generate a branch name for"));
+        }
+
+        let job_id = self.state.start_job(JobKind::AiBranchName);
+        let sender = self.bg_sender.clone();
+
+        thread::spawn(move || {
+            let result = ai.generate_branch_name(&context);
+            let _ = sender.send(BackgroundResult::BranchNameGenerated(job_id, result));
+        });
+
         Ok(())
     }
 
@@ -246,18 +429,20 @@ impl AppController {
             return Err(anyhow!("no staged changes to generate a message for"));
         }
 
-        self.state.ai_loading = true;
+        let job_id = self.state.start_job(JobKind::AiCommitMessage);
         let sender = self.bg_sender.clone();
 
         thread::spawn(move || {
             let result = ai.generate_commit_message(&context);
-            let _ = sender.send(BackgroundResult::CommitMessageGenerated(result));
+            let _ = sender.send(BackgroundResult::CommitMessageGenerated(job_id, result));
         });
 
         Ok(())
     }
 
     fn copilot_login(&mut self) {
+        let device_job_id = self.state.start_job(JobKind::CopilotDeviceCode);
+        let login_job_id = self.state.start_job(JobKind::CopilotLogin);
         let sender = self.bg_sender.clone();
 
         thread::spawn(move || {
@@ -265,23 +450,27 @@ impl AppController {
             let device_resp = match start_device_flow() {
                 Ok(resp) => resp,
                 Err(e) => {
-                    let _ = sender.send(BackgroundResult::DeviceCodeReceived(Err(e)));
+                    let _ =
+                        sender.send(BackgroundResult::DeviceCodeReceived(device_job_id, Err(e)));
                     return;
                 }
             };
 
             // Send device code info to UI
-            let _ = sender.send(BackgroundResult::DeviceCodeReceived(Ok(DeviceCodeInfo {
-                user_code: device_resp.user_code.clone(),
-                verification_uri: device_resp.verification_uri.clone(),
-            })));
+            let _ = sender.send(BackgroundResult::DeviceCodeReceived(
+                device_job_id,
+                Ok(DeviceCodeInfo {
+                    user_code: device_resp.user_code.clone(),
+                    verification_uri: device_resp.verification_uri.clone(),
+                }),
+            ));
 
             // Step 2: Poll for OAuth token
             let oauth_token =
                 match poll_for_oauth_token(&device_resp.device_code, device_resp.interval) {
                     Ok(token) => token,
                     Err(e) => {
-                        let _ = sender.send(BackgroundResult::LoginCompleted(Err(e)));
+                        let _ = sender.send(BackgroundResult::LoginCompleted(login_job_id, Err(e)));
                         return;
                     }
                 };
@@ -289,11 +478,11 @@ impl AppController {
             // Step 3: Save auth
             let auth = StoredAuth { oauth_token };
             if let Err(e) = save_auth(&auth) {
-                let _ = sender.send(BackgroundResult::LoginCompleted(Err(e)));
+                let _ = sender.send(BackgroundResult::LoginCompleted(login_job_id, Err(e)));
                 return;
             }
 
-            let _ = sender.send(BackgroundResult::LoginCompleted(Ok(())));
+            let _ = sender.send(BackgroundResult::LoginCompleted(login_job_id, Ok(())));
         });
     }
 
@@ -403,10 +592,14 @@ impl AppController {
             remote_name: "origin".to_string(),
         };
 
-        let url = self.github.create_repo(&params)?;
         self.state.close_modal();
-        self.reload_selected_repo()?;
-        self.state.set_info(format!("Created repository: {url}"));
+        let job_id = self.state.start_job(JobKind::CreateRepo);
+        let sender = self.bg_sender.clone();
+        let github = self.github;
+        thread::spawn(move || {
+            let result = github.create_repo(&params);
+            let _ = sender.send(BackgroundResult::RepoCreated(job_id, result));
+        });
         Ok(())
     }
 
@@ -437,10 +630,16 @@ impl AppController {
             .state
             .selected_repo_path()
             .ok_or_else(|| anyhow!("no repository selected"))?;
-        self.remote.fetch(&repo_path)?;
-        self.reload_selected_repo()?;
-        self.load_tracking_status();
-        self.state.set_info("Fetched from remote");
+        if self.state.is_job_running(&JobKind::Fetch) {
+            return Ok(());
+        }
+        let job_id = self.state.start_job(JobKind::Fetch);
+        let sender = self.bg_sender.clone();
+        let remote = self.remote;
+        thread::spawn(move || {
+            let result = remote.fetch(&repo_path);
+            let _ = sender.send(BackgroundResult::FetchCompleted(job_id, result));
+        });
         Ok(())
     }
 
@@ -454,10 +653,16 @@ impl AppController {
             .selected_repo_ref()
             .and_then(|r| r.current_branch.clone())
             .ok_or_else(|| anyhow!("no current branch"))?;
-        self.remote.push(&repo_path, &branch)?;
-        self.reload_selected_repo()?;
-        self.load_tracking_status();
-        self.state.set_info(format!("Pushed {branch}"));
+        if self.state.is_job_running(&JobKind::Push) {
+            return Ok(());
+        }
+        let job_id = self.state.start_job(JobKind::Push);
+        let sender = self.bg_sender.clone();
+        let remote = self.remote;
+        thread::spawn(move || {
+            let result = remote.push(&repo_path, &branch);
+            let _ = sender.send(BackgroundResult::PushCompleted(job_id, result));
+        });
         Ok(())
     }
 
@@ -466,10 +671,16 @@ impl AppController {
             .state
             .selected_repo_path()
             .ok_or_else(|| anyhow!("no repository selected"))?;
-        self.remote.pull(&repo_path)?;
-        self.reload_selected_repo()?;
-        self.load_tracking_status();
-        self.state.set_info("Pulled from remote");
+        if self.state.is_job_running(&JobKind::Pull) {
+            return Ok(());
+        }
+        let job_id = self.state.start_job(JobKind::Pull);
+        let sender = self.bg_sender.clone();
+        let remote = self.remote;
+        thread::spawn(move || {
+            let result = remote.pull(&repo_path);
+            let _ = sender.send(BackgroundResult::PullCompleted(job_id, result));
+        });
         Ok(())
     }
 
@@ -518,13 +729,16 @@ impl AppController {
             .state
             .selected_repo_path()
             .ok_or_else(|| anyhow!("no repository selected"))?;
-        let prs = self.github.list_prs(&repo_path).unwrap_or_default();
-        let count = prs.len();
-        if let Some(repo) = self.state.repos.get_mut(self.state.selected_repo) {
-            repo.pull_requests = prs;
+        if self.state.is_job_running(&JobKind::ListPrs) {
+            return Ok(());
         }
-        self.load_pr_checks();
-        self.state.set_info(format!("Loaded {count} pull requests"));
+        let job_id = self.state.start_job(JobKind::ListPrs);
+        let sender = self.bg_sender.clone();
+        let github = self.github;
+        thread::spawn(move || {
+            let result = github.list_prs(&repo_path);
+            let _ = sender.send(BackgroundResult::PrsLoaded(job_id, result));
+        });
         Ok(())
     }
 
@@ -542,11 +756,16 @@ impl AppController {
             return;
         };
         let number = pr.number;
-        self.state.pr_checks_cache = self
-            .github
-            .pr_checks(&repo_path, number)
-            .unwrap_or_default();
-        self.state.pr_detail_scroll = 0;
+        if self.state.is_job_running(&JobKind::PrChecks) {
+            return;
+        }
+        let job_id = self.state.start_job(JobKind::PrChecks);
+        let sender = self.bg_sender.clone();
+        let github = self.github;
+        thread::spawn(move || {
+            let result = github.pr_checks(&repo_path, number);
+            let _ = sender.send(BackgroundResult::PrChecksLoaded(job_id, result));
+        });
     }
 
     fn select_repo_by_index(&mut self, idx: usize) {
@@ -560,6 +779,39 @@ impl AppController {
     }
 
     fn refresh_repositories(&mut self) -> Result<()> {
+        if self.state.is_job_running(&JobKind::RefreshRepos) {
+            return Ok(());
+        }
+        let job_id = self.state.start_job(JobKind::RefreshRepos);
+        let sender = self.bg_sender.clone();
+        let root = self.root.clone();
+        let max_depth = self.max_depth;
+        let discovery = self.discovery;
+        let git = self.git;
+        let github = self.github;
+        thread::spawn(move || {
+            let result = (|| -> Result<Vec<RepositoryState>> {
+                let summaries = discovery.discover(&root, max_depth)?;
+                let repos: Vec<RepositoryState> = summaries
+                    .into_iter()
+                    .map(|summary| {
+                        let path = summary.path.clone();
+                        let mut repo_state = match git.load_repository(&summary) {
+                            Ok(details) => RepositoryState::from_details(details),
+                            Err(error) => RepositoryState::from_error(summary, error.to_string()),
+                        };
+                        repo_state.pull_requests = github.list_prs(&path).unwrap_or_default();
+                        repo_state
+                    })
+                    .collect();
+                Ok(repos)
+            })();
+            let _ = sender.send(BackgroundResult::ReposRefreshed(job_id, result));
+        });
+        Ok(())
+    }
+
+    fn refresh_repositories_sync(&mut self) -> Result<()> {
         let selected_path = self.state.selected_repo_path();
         let summaries = self.discovery.discover(&self.root, self.max_depth)?;
         let repos: Vec<RepositoryState> = summaries
@@ -826,7 +1078,10 @@ impl AppController {
 
     fn insert_char(&mut self, ch: char) {
         match &self.state.modal {
-            Modal::BranchCreate => self.state.branch_name_input.push(ch),
+            Modal::BranchCreate => {
+                let ch = if ch == ' ' { '-' } else { ch };
+                self.state.branch_name_input.push(ch);
+            }
             Modal::Commit => self.state.commit_message_input.push(ch),
             Modal::CreateRepo(step) => match step {
                 crate::app::state::CreateRepoStep::Owner => {
@@ -841,7 +1096,11 @@ impl AppController {
                 }
                 _ => {}
             },
-            Modal::None | Modal::BranchSwitch | Modal::CopilotLogin => {}
+            Modal::BranchSwitch => {
+                self.state.branch_filter.push(ch);
+                self.state.recompute_branch_filter();
+            }
+            Modal::None | Modal::CopilotLogin => {}
         }
     }
 
@@ -866,7 +1125,11 @@ impl AppController {
                 }
                 _ => {}
             },
-            Modal::None | Modal::BranchSwitch | Modal::CopilotLogin => {}
+            Modal::BranchSwitch => {
+                self.state.branch_filter.pop();
+                self.state.recompute_branch_filter();
+            }
+            Modal::None | Modal::CopilotLogin => {}
         }
     }
 
