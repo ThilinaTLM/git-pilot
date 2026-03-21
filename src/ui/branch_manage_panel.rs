@@ -1,30 +1,36 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 
 use crate::app::state::AppState;
-use crate::ui::layout;
+use crate::ui::layout::centered_rect;
 use crate::ui::theme;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
-    let (list_area, detail_area) = layout::split_branches_view(area);
-    render_branch_list(frame, list_area, state);
-    render_branch_details(frame, detail_area, state);
+    let modal = centered_rect(70, 80, area);
+    frame.render_widget(Clear, modal);
+    let block = theme::modal_block("Branches");
+    let inner = block.inner(modal);
+    frame.render_widget(block, modal);
+
+    let halves = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(inner);
+
+    render_branch_list(frame, halves[0], state);
+    render_branch_details(frame, halves[1], state);
 }
 
 fn render_branch_list(frame: &mut Frame, area: Rect, state: &AppState) {
-    let block = theme::pane_block("Branches");
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
     let Some(repo) = state.selected_repo_ref() else {
         let empty = Paragraph::new("No repository selected.").style(theme::muted_text_style());
-        frame.render_widget(empty, inner);
+        frame.render_widget(empty, area);
         return;
     };
 
     if repo.branches.is_empty() {
         let empty = Paragraph::new("No branches found.").style(theme::muted_text_style());
-        frame.render_widget(empty, inner);
+        frame.render_widget(empty, area);
         return;
     }
 
@@ -44,7 +50,7 @@ fn render_branch_list(frame: &mut Frame, area: Rect, state: &AppState) {
     )));
 
     let mut items = vec![header];
-    let mut row_to_branch: Vec<Option<usize>> = vec![None]; // header row
+    let mut row_to_branch: Vec<Option<usize>> = vec![None];
 
     for (filtered_idx, &real_idx) in state.filtered_branches.iter().enumerate() {
         let branch = &repo.branches[real_idx];
@@ -77,14 +83,10 @@ fn render_branch_list(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let mut list_state = ListState::default();
     list_state.select(visual_row);
-    frame.render_stateful_widget(list, inner, &mut list_state);
+    frame.render_stateful_widget(list, area, &mut list_state);
 }
 
 fn render_branch_details(frame: &mut Frame, area: Rect, state: &AppState) {
-    let block = theme::pane_block("Details");
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
     let Some(repo) = state.selected_repo_ref() else {
         return;
     };
@@ -149,7 +151,6 @@ fn render_branch_details(frame: &mut Frame, area: Rect, state: &AppState) {
         )));
     }
 
-    // Action hints at bottom
     lines.push(Line::default());
     lines.push(Line::default());
     lines.push(Line::from(vec![
@@ -171,8 +172,10 @@ fn render_branch_details(frame: &mut Frame, area: Rect, state: &AppState) {
         Span::styled("pull", theme::muted_text_style()),
         Span::styled("  / ", theme::accent_text_style()),
         Span::styled("filter", theme::muted_text_style()),
+        Span::styled("  Esc ", theme::accent_text_style()),
+        Span::styled("close", theme::muted_text_style()),
     ]));
 
     let paragraph = Paragraph::new(Text::from(lines)).wrap(ratatui::widgets::Wrap { trim: true });
-    frame.render_widget(paragraph, inner);
+    frame.render_widget(paragraph, area);
 }

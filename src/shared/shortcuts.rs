@@ -18,23 +18,23 @@ pub const GLOBAL_SHORTCUTS: &[ShortcutEntry] = &[
     },
     ShortcutEntry {
         keys: "Tab / Shift+Tab",
+        description: "switch between repositories",
+    },
+    ShortcutEntry {
+        keys: "Left / Right",
         description: "switch between views",
     },
     ShortcutEntry {
-        keys: "1-5",
-        description: "jump to Changes / Branches / Commits / PR / Settings",
+        keys: "1-2",
+        description: "jump to Changes / PR",
     },
     ShortcutEntry {
         keys: "Alt+1..9",
         description: "jump to repository by position",
     },
     ShortcutEntry {
-        keys: "Left / h",
-        description: "select previous repository tab",
-    },
-    ShortcutEntry {
-        keys: "Right / l",
-        description: "select next repository tab",
+        keys: ",",
+        description: "open settings",
     },
 ];
 
@@ -80,8 +80,16 @@ pub const CHANGES_SHORTCUTS: &[ShortcutEntry] = &[
         description: "open branch switcher",
     },
     ShortcutEntry {
+        keys: "B",
+        description: "open branch management",
+    },
+    ShortcutEntry {
         keys: "n",
         description: "create a new branch",
+    },
+    ShortcutEntry {
+        keys: "L",
+        description: "open commit log",
     },
     ShortcutEntry {
         keys: "R",
@@ -94,68 +102,6 @@ pub const CHANGES_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
         keys: "PageUp / Ctrl+u",
         description: "scroll diff preview up",
-    },
-];
-
-pub const BRANCHES_SHORTCUTS: &[ShortcutEntry] = &[
-    ShortcutEntry {
-        keys: "Down / j",
-        description: "select next branch",
-    },
-    ShortcutEntry {
-        keys: "Up / k",
-        description: "select previous branch",
-    },
-    ShortcutEntry {
-        keys: "Enter",
-        description: "switch to selected branch",
-    },
-    ShortcutEntry {
-        keys: "n",
-        description: "create a new branch",
-    },
-    ShortcutEntry {
-        keys: "d",
-        description: "delete selected branch",
-    },
-    ShortcutEntry {
-        keys: "m",
-        description: "merge selected branch into current",
-    },
-    ShortcutEntry {
-        keys: "f",
-        description: "fetch from remote",
-    },
-    ShortcutEntry {
-        keys: "p",
-        description: "push current branch",
-    },
-    ShortcutEntry {
-        keys: "P",
-        description: "pull from remote",
-    },
-    ShortcutEntry {
-        keys: "R",
-        description: "create a GitHub repository",
-    },
-];
-
-pub const COMMITS_SHORTCUTS: &[ShortcutEntry] = &[
-    ShortcutEntry {
-        keys: "Down / j",
-        description: "select next commit",
-    },
-    ShortcutEntry {
-        keys: "Up / k",
-        description: "select previous commit",
-    },
-    ShortcutEntry {
-        keys: "PageDown / Ctrl+d",
-        description: "scroll commit detail down",
-    },
-    ShortcutEntry {
-        keys: "PageUp / Ctrl+u",
-        description: "scroll commit detail up",
     },
 ];
 
@@ -183,29 +129,6 @@ pub const PR_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
         keys: "PageUp / Ctrl+u",
         description: "scroll PR detail up",
-    },
-];
-
-pub const SETTINGS_SHORTCUTS: &[ShortcutEntry] = &[
-    ShortcutEntry {
-        keys: "Down / j",
-        description: "select next setting",
-    },
-    ShortcutEntry {
-        keys: "Up / k",
-        description: "select previous setting",
-    },
-    ShortcutEntry {
-        keys: "Space / Enter",
-        description: "toggle auto-fetch",
-    },
-    ShortcutEntry {
-        keys: "+ / -",
-        description: "adjust auto-fetch interval",
-    },
-    ShortcutEntry {
-        keys: "R",
-        description: "create a GitHub repository",
     },
 ];
 

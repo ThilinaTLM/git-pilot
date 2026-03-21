@@ -68,6 +68,9 @@ pub enum AppAction {
     SelectLogEntry(usize),
     SelectPr(usize),
     SelectSettingsItem(usize),
+    OpenBranchManage,
+    OpenCommitLog,
+    OpenSettings,
 }
 
 pub fn map_key_event(view: &View, modal: &Modal, key_event: KeyEvent) -> AppAction {
@@ -79,10 +82,7 @@ pub fn map_key_event(view: &View, modal: &Modal, key_event: KeyEvent) -> AppActi
     }
     match view {
         View::Changes => map_changes_key(key_event),
-        View::Branches => map_branches_key(key_event),
-        View::Commits => map_commits_key(key_event),
         View::Pr => map_pr_key(key_event),
-        View::Settings => map_settings_key(key_event),
     }
 }
 
@@ -91,6 +91,9 @@ fn map_modal_key(modal: &Modal, key_event: KeyEvent) -> AppAction {
         Modal::None => AppAction::Noop,
         Modal::BranchSwitch => map_branch_switch_key(key_event),
         Modal::BranchCreate => map_branch_create_key(key_event),
+        Modal::BranchManage => map_branch_manage_key(key_event),
+        Modal::CommitLog => map_commit_log_key(key_event),
+        Modal::Settings => map_settings_modal_key(key_event),
         Modal::Commit => map_commit_input_key(key_event),
         Modal::CopilotLogin => match key_event.code {
             KeyCode::Esc => AppAction::CloseModal,
@@ -110,15 +113,13 @@ fn map_global_key(key_event: KeyEvent) -> Option<AppAction> {
         KeyCode::Char('q') => Some(AppAction::Quit),
         KeyCode::Char('?') => Some(AppAction::ToggleHelp),
         KeyCode::Char('r') => Some(AppAction::RefreshRepos),
-        KeyCode::Left | KeyCode::Char('h') => Some(AppAction::SelectPreviousRepo),
-        KeyCode::Right | KeyCode::Char('l') => Some(AppAction::SelectNextRepo),
-        KeyCode::Tab => Some(AppAction::NextView),
-        KeyCode::BackTab => Some(AppAction::PreviousView),
+        KeyCode::Left | KeyCode::Char('h') => Some(AppAction::PreviousView),
+        KeyCode::Right | KeyCode::Char('l') => Some(AppAction::NextView),
+        KeyCode::Tab => Some(AppAction::SelectNextRepo),
+        KeyCode::BackTab => Some(AppAction::SelectPreviousRepo),
         KeyCode::Char('1') => Some(AppAction::SwitchView(View::Changes)),
-        KeyCode::Char('2') => Some(AppAction::SwitchView(View::Branches)),
-        KeyCode::Char('3') => Some(AppAction::SwitchView(View::Commits)),
-        KeyCode::Char('4') => Some(AppAction::SwitchView(View::Pr)),
-        KeyCode::Char('5') => Some(AppAction::SwitchView(View::Settings)),
+        KeyCode::Char('2') => Some(AppAction::SwitchView(View::Pr)),
+        KeyCode::Char(',') => Some(AppAction::OpenSettings),
         _ => None,
     }
 }
@@ -144,7 +145,9 @@ fn map_changes_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Char('c') => AppAction::OpenCommitPanel,
         KeyCode::Char('a') => AppAction::OpenCommitAmend,
         KeyCode::Char('b') => AppAction::OpenBranchSwitch,
+        KeyCode::Char('B') => AppAction::OpenBranchManage,
         KeyCode::Char('n') => AppAction::OpenBranchCreate,
+        KeyCode::Char('L') => AppAction::OpenCommitLog,
         KeyCode::Char('R') => AppAction::OpenCreateRepo,
         KeyCode::PageDown => AppAction::ScrollDiffDown,
         KeyCode::PageUp => AppAction::ScrollDiffUp,
@@ -152,8 +155,9 @@ fn map_changes_key(key_event: KeyEvent) -> AppAction {
     }
 }
 
-fn map_branches_key(key_event: KeyEvent) -> AppAction {
+fn map_branch_manage_key(key_event: KeyEvent) -> AppAction {
     match key_event.code {
+        KeyCode::Esc => AppAction::CloseModal,
         KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextBranch,
         KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousBranch,
         KeyCode::Enter => AppAction::ConfirmModal,
@@ -164,12 +168,11 @@ fn map_branches_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Char('f') => AppAction::FetchRemote,
         KeyCode::Char('p') => AppAction::PushBranch,
         KeyCode::Char('P') => AppAction::PullBranch,
-        KeyCode::Char('R') => AppAction::OpenCreateRepo,
         _ => AppAction::Noop,
     }
 }
 
-fn map_commits_key(key_event: KeyEvent) -> AppAction {
+fn map_commit_log_key(key_event: KeyEvent) -> AppAction {
     if key_event.modifiers.contains(KeyModifiers::CONTROL) {
         return match key_event.code {
             KeyCode::Char('d') => AppAction::ScrollLogDown,
@@ -179,10 +182,23 @@ fn map_commits_key(key_event: KeyEvent) -> AppAction {
     }
 
     match key_event.code {
+        KeyCode::Esc => AppAction::CloseModal,
         KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextLogEntry,
         KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousLogEntry,
         KeyCode::PageDown => AppAction::ScrollLogDown,
         KeyCode::PageUp => AppAction::ScrollLogUp,
+        _ => AppAction::Noop,
+    }
+}
+
+fn map_settings_modal_key(key_event: KeyEvent) -> AppAction {
+    match key_event.code {
+        KeyCode::Esc => AppAction::CloseModal,
+        KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextSettingsItem,
+        KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousSettingsItem,
+        KeyCode::Char(' ') | KeyCode::Enter => AppAction::ToggleAutoFetch,
+        KeyCode::Char('+') | KeyCode::Char('=') => AppAction::IncreaseAutoFetchInterval,
+        KeyCode::Char('-') => AppAction::DecreaseAutoFetchInterval,
         _ => AppAction::Noop,
     }
 }
@@ -203,18 +219,6 @@ fn map_pr_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Char('r') => AppAction::RefreshPrs,
         KeyCode::PageDown => AppAction::ScrollPrDetailDown,
         KeyCode::PageUp => AppAction::ScrollPrDetailUp,
-        _ => AppAction::Noop,
-    }
-}
-
-fn map_settings_key(key_event: KeyEvent) -> AppAction {
-    match key_event.code {
-        KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextSettingsItem,
-        KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousSettingsItem,
-        KeyCode::Char(' ') | KeyCode::Enter => AppAction::ToggleAutoFetch,
-        KeyCode::Char('+') | KeyCode::Char('=') => AppAction::IncreaseAutoFetchInterval,
-        KeyCode::Char('-') => AppAction::DecreaseAutoFetchInterval,
-        KeyCode::Char('R') => AppAction::OpenCreateRepo,
         _ => AppAction::Noop,
     }
 }
@@ -328,14 +332,14 @@ mod tests {
     }
 
     #[test]
-    fn maps_tab_to_next_view() {
+    fn maps_tab_to_next_repo() {
         let action = map_key_event(
             &View::Changes,
             &Modal::None,
             KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
         );
 
-        assert_eq!(action, AppAction::NextView);
+        assert_eq!(action, AppAction::SelectNextRepo);
     }
 
     #[test]
@@ -350,10 +354,10 @@ mod tests {
     }
 
     #[test]
-    fn maps_branches_view_delete() {
+    fn maps_branch_manage_modal_delete() {
         let action = map_key_event(
-            &View::Branches,
-            &Modal::None,
+            &View::Changes,
+            &Modal::BranchManage,
             KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE),
         );
 
@@ -368,6 +372,6 @@ mod tests {
             KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE),
         );
 
-        assert_eq!(action, AppAction::SwitchView(View::Branches));
+        assert_eq!(action, AppAction::SwitchView(View::Pr));
     }
 }

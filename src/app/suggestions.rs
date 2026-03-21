@@ -33,6 +33,64 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                     label: "cancel",
                 },
             ],
+            Modal::BranchManage => {
+                let mut suggestions = Vec::new();
+                if state.selected_branch_name().is_some() {
+                    suggestions.push(Suggestion {
+                        key_hint: "Enter",
+                        label: "switch",
+                    });
+                    suggestions.push(Suggestion {
+                        key_hint: "d",
+                        label: "delete",
+                    });
+                    suggestions.push(Suggestion {
+                        key_hint: "m",
+                        label: "merge",
+                    });
+                }
+                suggestions.push(Suggestion {
+                    key_hint: "n",
+                    label: "new branch",
+                });
+                suggestions.push(Suggestion {
+                    key_hint: "Esc",
+                    label: "close",
+                });
+                suggestions
+            }
+            Modal::CommitLog => vec![
+                Suggestion {
+                    key_hint: "j/k",
+                    label: "navigate",
+                },
+                Suggestion {
+                    key_hint: "Ctrl+d/u",
+                    label: "scroll detail",
+                },
+                Suggestion {
+                    key_hint: "Esc",
+                    label: "close",
+                },
+            ],
+            Modal::Settings => vec![
+                Suggestion {
+                    key_hint: "j/k",
+                    label: "navigate",
+                },
+                Suggestion {
+                    key_hint: "Space",
+                    label: "toggle",
+                },
+                Suggestion {
+                    key_hint: "+/-",
+                    label: "adjust",
+                },
+                Suggestion {
+                    key_hint: "Esc",
+                    label: "close",
+                },
+            ],
             Modal::Commit => vec![
                 Suggestion {
                     key_hint: "Enter",
@@ -58,10 +116,7 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
 
     match state.active_view {
         View::Changes => compute_changes_suggestions(state),
-        View::Branches => compute_branches_suggestions(state),
-        View::Commits => compute_commits_suggestions(state),
         View::Pr => compute_pr_suggestions(state),
-        View::Settings => compute_settings_suggestions(state),
     }
 }
 
@@ -113,44 +168,13 @@ fn compute_changes_suggestions(state: &AppState) -> Vec<Suggestion> {
         });
     }
 
-    if let Some(repo) = state.selected_repo_ref()
-        && !repo.has_origin_remote
-    {
-        suggestions.push(Suggestion {
-            key_hint: "R",
-            label: "create repo",
-        });
-    }
-
     suggestions.push(Suggestion {
-        key_hint: "?",
-        label: "help",
+        key_hint: "B",
+        label: "branches",
     });
-
-    suggestions
-}
-
-fn compute_branches_suggestions(state: &AppState) -> Vec<Suggestion> {
-    let mut suggestions = Vec::new();
-
-    if state.selected_branch_name().is_some() {
-        suggestions.push(Suggestion {
-            key_hint: "Enter",
-            label: "switch",
-        });
-        suggestions.push(Suggestion {
-            key_hint: "d",
-            label: "delete",
-        });
-        suggestions.push(Suggestion {
-            key_hint: "m",
-            label: "merge",
-        });
-    }
-
     suggestions.push(Suggestion {
-        key_hint: "n",
-        label: "new branch",
+        key_hint: "L",
+        label: "log",
     });
 
     if let Some(repo) = state.selected_repo_ref()
@@ -168,23 +192,6 @@ fn compute_branches_suggestions(state: &AppState) -> Vec<Suggestion> {
     });
 
     suggestions
-}
-
-fn compute_commits_suggestions(_state: &AppState) -> Vec<Suggestion> {
-    vec![
-        Suggestion {
-            key_hint: "j/k",
-            label: "navigate",
-        },
-        Suggestion {
-            key_hint: "Ctrl+d/u",
-            label: "scroll detail",
-        },
-        Suggestion {
-            key_hint: "?",
-            label: "help",
-        },
-    ]
 }
 
 fn compute_pr_suggestions(state: &AppState) -> Vec<Suggestion> {
@@ -207,39 +214,6 @@ fn compute_pr_suggestions(state: &AppState) -> Vec<Suggestion> {
         key_hint: "r",
         label: "refresh PRs",
     });
-    suggestions.push(Suggestion {
-        key_hint: "?",
-        label: "help",
-    });
-
-    suggestions
-}
-
-fn compute_settings_suggestions(state: &AppState) -> Vec<Suggestion> {
-    let mut suggestions = vec![
-        Suggestion {
-            key_hint: "j/k",
-            label: "navigate",
-        },
-        Suggestion {
-            key_hint: "Space",
-            label: "toggle",
-        },
-        Suggestion {
-            key_hint: "+/-",
-            label: "adjust",
-        },
-    ];
-
-    if let Some(repo) = state.selected_repo_ref()
-        && !repo.has_origin_remote
-    {
-        suggestions.push(Suggestion {
-            key_hint: "R",
-            label: "create repo",
-        });
-    }
-
     suggestions.push(Suggestion {
         key_hint: "?",
         label: "help",

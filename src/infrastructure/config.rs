@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use crate::domain::settings::AppSettings;
 
 fn config_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|dir| dir.join("git-tui").join("settings.toml"))
+    dirs::config_dir().map(|dir| dir.join("git-pilot").join("settings.toml"))
 }
 
 pub fn load_settings() -> AppSettings {

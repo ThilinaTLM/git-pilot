@@ -1,4 +1,4 @@
-# git-tui
+# git-pilot
 
 ## Build & Test Commands
 - `cargo build` — compile the project

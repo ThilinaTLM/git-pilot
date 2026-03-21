@@ -2,11 +2,11 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use git_tui::domain::branch::BranchName;
-use git_tui::domain::commit::CommitMessage;
-use git_tui::domain::repo::{RepositoryId, RepositorySummary};
-use git_tui::infrastructure::git_cli::{GitCliRepositoryService, GitRepositoryService};
-use git_tui::infrastructure::process::run_command;
+use git_pilot::domain::branch::BranchName;
+use git_pilot::domain::commit::CommitMessage;
+use git_pilot::domain::repo::{RepositoryId, RepositorySummary};
+use git_pilot::infrastructure::git_cli::{GitCliRepositoryService, GitRepositoryService};
+use git_pilot::infrastructure::process::run_command;
 use tempfile::TempDir;
 
 #[test]

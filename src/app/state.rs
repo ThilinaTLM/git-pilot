@@ -13,38 +13,23 @@ use crate::domain::status::{ChangedFile, FileSection};
 pub enum View {
     #[default]
     Changes,
-    Branches,
-    Commits,
     Pr,
-    Settings,
 }
 
 impl View {
-    pub const ALL: &[View] = &[
-        View::Changes,
-        View::Branches,
-        View::Commits,
-        View::Pr,
-        View::Settings,
-    ];
+    pub const ALL: &[View] = &[View::Changes, View::Pr];
 
     pub fn index(&self) -> usize {
         match self {
             View::Changes => 0,
-            View::Branches => 1,
-            View::Commits => 2,
-            View::Pr => 3,
-            View::Settings => 4,
+            View::Pr => 1,
         }
     }
 
     pub fn label(&self) -> &'static str {
         match self {
             View::Changes => "Changes",
-            View::Branches => "Branches",
-            View::Commits => "Commits",
             View::Pr => "PR",
-            View::Settings => "Settings",
         }
     }
 }
@@ -70,6 +55,9 @@ pub enum Modal {
     None,
     BranchSwitch,
     BranchCreate,
+    BranchManage,
+    CommitLog,
+    Settings,
     Commit,
     CopilotLogin,
     CreateRepo(CreateRepoStep),

@@ -1,24 +1,29 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 
 use crate::app::state::AppState;
-use crate::ui::layout;
+use crate::ui::layout::centered_rect;
 use crate::ui::theme;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
-    let (list_area, detail_area) = layout::split_settings_view(area);
-    render_settings_list(frame, list_area, state);
-    render_settings_detail(frame, detail_area, state);
+    let modal = centered_rect(60, 60, area);
+    frame.render_widget(Clear, modal);
+    let block = theme::modal_block("Settings");
+    let inner = block.inner(modal);
+    frame.render_widget(block, modal);
+
+    let halves = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(inner);
+
+    render_settings_list(frame, halves[0], state);
+    render_settings_detail(frame, halves[1], state);
 }
 
 fn render_settings_list(frame: &mut Frame, area: Rect, state: &AppState) {
-    let block = theme::pane_block("Settings");
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
     let mut items = Vec::new();
 
-    // Preferences section
     items.push(ListItem::new(Line::from(Span::styled(
         "Preferences",
         theme::section_header_style(),
@@ -39,7 +44,6 @@ fn render_settings_list(frame: &mut Frame, area: Rect, state: &AppState) {
         theme::text_style(),
     ))));
 
-    // Remotes section
     items.push(ListItem::new(Line::from(Span::styled(
         "",
         theme::text_style(),
@@ -67,11 +71,7 @@ fn render_settings_list(frame: &mut Frame, area: Rect, state: &AppState) {
         }
     }
 
-    // Map selected_settings_item to visual row:
-    // Row 0 = header "Preferences" (not selectable)
-    // Row 1 = auto-fetch toggle (item 0)
-    // Row 2 = interval (item 1)
-    let visual_row = state.selected_settings_item + 1; // offset by header
+    let visual_row = state.selected_settings_item + 1;
 
     let list = List::new(items)
         .style(theme::text_style())
@@ -80,14 +80,10 @@ fn render_settings_list(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let mut list_state = ListState::default();
     list_state.select(Some(visual_row));
-    frame.render_stateful_widget(list, inner, &mut list_state);
+    frame.render_stateful_widget(list, area, &mut list_state);
 }
 
 fn render_settings_detail(frame: &mut Frame, area: Rect, state: &AppState) {
-    let block = theme::pane_block("Details");
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
     let mut lines = Vec::new();
 
     match state.selected_settings_item {
@@ -155,16 +151,12 @@ fn render_settings_detail(frame: &mut Frame, area: Rect, state: &AppState) {
         _ => {}
     }
 
-    if let Some(repo) = state.selected_repo_ref()
-        && !repo.has_origin_remote
-    {
-        lines.push(Line::default());
-        lines.push(Line::from(vec![
-            Span::styled("R ", theme::accent_text_style()),
-            Span::styled("create GitHub repository", theme::muted_text_style()),
-        ]));
-    }
+    lines.push(Line::default());
+    lines.push(Line::from(vec![
+        Span::styled("Esc ", theme::accent_text_style()),
+        Span::styled("close", theme::muted_text_style()),
+    ]));
 
     let paragraph = Paragraph::new(Text::from(lines)).wrap(ratatui::widgets::Wrap { trim: true });
-    frame.render_widget(paragraph, inner);
+    frame.render_widget(paragraph, area);
 }

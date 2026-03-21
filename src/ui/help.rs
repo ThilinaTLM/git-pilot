@@ -98,17 +98,8 @@ fn help_text(state: &AppState) -> Text<'static> {
         View::Changes => {
             render_section(&mut lines, "Changes View", shortcuts::CHANGES_SHORTCUTS);
         }
-        View::Branches => {
-            render_section(&mut lines, "Branches View", shortcuts::BRANCHES_SHORTCUTS);
-        }
-        View::Commits => {
-            render_section(&mut lines, "Commits View", shortcuts::COMMITS_SHORTCUTS);
-        }
         View::Pr => {
             render_section(&mut lines, "PR View", shortcuts::PR_SHORTCUTS);
-        }
-        View::Settings => {
-            render_section(&mut lines, "Settings View", shortcuts::SETTINGS_SHORTCUTS);
         }
     }
 

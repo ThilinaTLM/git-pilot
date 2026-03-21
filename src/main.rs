@@ -1,3 +1,3 @@
 fn main() -> anyhow::Result<()> {
-    git_tui::run()
+    git_pilot::run()
 }

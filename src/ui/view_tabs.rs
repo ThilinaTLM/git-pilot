@@ -4,13 +4,7 @@ use crate::app::state::{AppState, View};
 use crate::ui::theme;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
-    let views = [
-        ("Changes", View::Changes),
-        ("Branches", View::Branches),
-        ("Commits", View::Commits),
-        ("PR", View::Pr),
-        ("Settings", View::Settings),
-    ];
+    let views = [("Changes", View::Changes), ("PR", View::Pr)];
 
     let mut spans = Vec::new();
     for (i, (label, view)) in views.iter().enumerate() {

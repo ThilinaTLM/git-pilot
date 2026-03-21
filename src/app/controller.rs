@@ -278,6 +278,26 @@ impl AppController {
             AppAction::ToggleStage => self.toggle_stage()?,
             AppAction::OpenBranchSwitch => self.state.open_branch_switch(),
             AppAction::OpenBranchCreate => self.state.open_branch_create(),
+            AppAction::OpenBranchManage => {
+                self.state.modal = Modal::BranchManage;
+                self.state.branch_filter.clear();
+                self.state.recompute_branch_filter();
+                let real_idx = self.state.current_branch_index().unwrap_or(0);
+                self.state.selected_branch = self
+                    .state
+                    .filtered_branches
+                    .iter()
+                    .position(|&i| i == real_idx)
+                    .unwrap_or(0);
+            }
+            AppAction::OpenCommitLog => {
+                self.state.modal = Modal::CommitLog;
+                self.state.selected_log_entry = 0;
+                self.state.log_scroll = 0;
+            }
+            AppAction::OpenSettings => {
+                self.state.modal = Modal::Settings;
+            }
             AppAction::OpenCommitPanel => self.state.open_commit_panel(),
             AppAction::OpenCommitAmend => self.open_commit_amend()?,
             AppAction::ConfirmModal => self.confirm_modal()?,
@@ -976,16 +996,18 @@ impl AppController {
 
     fn confirm_modal(&mut self) -> Result<()> {
         match self.state.modal {
-            Modal::None => self.confirm_branches_view_switch(),
+            Modal::None => Ok(()),
             Modal::BranchSwitch => self.confirm_branch_switch(),
             Modal::BranchCreate => self.confirm_branch_create(),
+            Modal::BranchManage => self.confirm_branch_manage_switch(),
+            Modal::CommitLog | Modal::Settings => Ok(()),
             Modal::Commit => self.confirm_commit(),
             Modal::CopilotLogin => Ok(()),
             Modal::CreateRepo(_) => self.confirm_create_repo(),
         }
     }
 
-    fn confirm_branches_view_switch(&mut self) -> Result<()> {
+    fn confirm_branch_manage_switch(&mut self) -> Result<()> {
         let repo_path = self
             .state
             .selected_repo_path()
@@ -1100,7 +1122,11 @@ impl AppController {
                 self.state.branch_filter.push(ch);
                 self.state.recompute_branch_filter();
             }
-            Modal::None | Modal::CopilotLogin => {}
+            Modal::None
+            | Modal::CopilotLogin
+            | Modal::BranchManage
+            | Modal::CommitLog
+            | Modal::Settings => {}
         }
     }
 
@@ -1129,7 +1155,11 @@ impl AppController {
                 self.state.branch_filter.pop();
                 self.state.recompute_branch_filter();
             }
-            Modal::None | Modal::CopilotLogin => {}
+            Modal::None
+            | Modal::CopilotLogin
+            | Modal::BranchManage
+            | Modal::CommitLog
+            | Modal::Settings => {}
         }
     }
 

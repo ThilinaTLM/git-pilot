@@ -1,30 +1,36 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 
 use crate::app::state::AppState;
-use crate::ui::layout;
+use crate::ui::layout::centered_rect;
 use crate::ui::theme;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
-    let (list_area, detail_area) = layout::split_log_view(area);
-    render_log_list(frame, list_area, state);
-    render_commit_detail(frame, detail_area, state);
+    let modal = centered_rect(70, 80, area);
+    frame.render_widget(Clear, modal);
+    let block = theme::modal_block("Commits");
+    let inner = block.inner(modal);
+    frame.render_widget(block, modal);
+
+    let halves = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(inner);
+
+    render_log_list(frame, halves[0], state);
+    render_commit_detail(frame, halves[1], state);
 }
 
 fn render_log_list(frame: &mut Frame, area: Rect, state: &AppState) {
-    let block = theme::pane_block("Commits");
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
     let Some(repo) = state.selected_repo_ref() else {
         let empty = Paragraph::new("No repository selected.").style(theme::muted_text_style());
-        frame.render_widget(empty, inner);
+        frame.render_widget(empty, area);
         return;
     };
 
     if repo.log_entries.is_empty() {
         let empty = Paragraph::new("No commits found.").style(theme::muted_text_style());
-        frame.render_widget(empty, inner);
+        frame.render_widget(empty, area);
         return;
     }
 
@@ -43,14 +49,10 @@ fn render_log_list(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let mut list_state = ListState::default();
     list_state.select(Some(state.selected_log_entry));
-    frame.render_stateful_widget(list, inner, &mut list_state);
+    frame.render_stateful_widget(list, area, &mut list_state);
 }
 
 fn render_commit_detail(frame: &mut Frame, area: Rect, state: &AppState) {
-    let block = theme::pane_block("Commit");
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
     let Some(repo) = state.selected_repo_ref() else {
         return;
     };
@@ -87,8 +89,14 @@ fn render_commit_detail(frame: &mut Frame, area: Rect, state: &AppState) {
         }
     }
 
+    lines.push(Line::default());
+    lines.push(Line::from(vec![
+        Span::styled("Esc ", theme::accent_text_style()),
+        Span::styled("close", theme::muted_text_style()),
+    ]));
+
     let paragraph = Paragraph::new(Text::from(lines))
         .wrap(ratatui::widgets::Wrap { trim: true })
         .scroll((state.log_scroll, 0));
-    frame.render_widget(paragraph, inner);
+    frame.render_widget(paragraph, area);
 }

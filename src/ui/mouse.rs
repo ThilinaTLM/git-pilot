@@ -65,17 +65,6 @@ fn map_scroll_down(
                 AppAction::Noop
             }
         }
-        View::Branches => AppAction::SelectNextBranch,
-        View::Commits => {
-            let (left, right) = layout::split_log_view(screen.view_area);
-            if in_rect(col, row, left) {
-                AppAction::SelectNextLogEntry
-            } else if in_rect(col, row, right) {
-                AppAction::ScrollLogDown
-            } else {
-                AppAction::Noop
-            }
-        }
         View::Pr => {
             let (left, right) = layout::split_pr_view(screen.view_area);
             if in_rect(col, row, left) {
@@ -86,7 +75,6 @@ fn map_scroll_down(
                 AppAction::Noop
             }
         }
-        View::Settings => AppAction::SelectNextSettingsItem,
     }
 }
 
@@ -106,17 +94,6 @@ fn map_scroll_up(col: u16, row: u16, screen: &layout::ScreenLayout, state: &AppS
                 AppAction::Noop
             }
         }
-        View::Branches => AppAction::SelectPreviousBranch,
-        View::Commits => {
-            let (left, right) = layout::split_log_view(screen.view_area);
-            if in_rect(col, row, left) {
-                AppAction::SelectPreviousLogEntry
-            } else if in_rect(col, row, right) {
-                AppAction::ScrollLogUp
-            } else {
-                AppAction::Noop
-            }
-        }
         View::Pr => {
             let (left, right) = layout::split_pr_view(screen.view_area);
             if in_rect(col, row, left) {
@@ -127,7 +104,6 @@ fn map_scroll_up(col: u16, row: u16, screen: &layout::ScreenLayout, state: &AppS
                 AppAction::Noop
             }
         }
-        View::Settings => AppAction::SelectPreviousSettingsItem,
     }
 }
 
@@ -152,13 +128,7 @@ fn hit_repo_tab(col: u16, area: Rect, state: &AppState) -> AppAction {
 }
 
 fn hit_view_tab(col: u16, area: Rect) -> AppAction {
-    let tabs: &[(&str, View)] = &[
-        ("Changes", View::Changes),
-        ("Branches", View::Branches),
-        ("Commits", View::Commits),
-        ("PR", View::Pr),
-        ("Settings", View::Settings),
-    ];
+    let tabs: &[(&str, View)] = &[("Changes", View::Changes), ("PR", View::Pr)];
 
     let mut x = area.x;
     for (i, (label, view)) in tabs.iter().enumerate() {
@@ -183,28 +153,10 @@ fn hit_view_area(col: u16, row: u16, view_area: Rect, state: &AppState) -> AppAc
                 return hit_file_item(row, left, state);
             }
         }
-        View::Branches => {
-            let (left, _) = layout::split_branches_view(view_area);
-            if in_rect(col, row, left) {
-                return hit_branch_item(row, left, state);
-            }
-        }
-        View::Commits => {
-            let (left, _) = layout::split_log_view(view_area);
-            if in_rect(col, row, left) {
-                return hit_log_item(row, left, state);
-            }
-        }
         View::Pr => {
             let (left, _) = layout::split_pr_view(view_area);
             if in_rect(col, row, left) {
                 return hit_pr_item(row, left, state);
-            }
-        }
-        View::Settings => {
-            let (left, _) = layout::split_settings_view(view_area);
-            if in_rect(col, row, left) {
-                return hit_settings_item(row, left);
             }
         }
     }
@@ -240,42 +192,6 @@ fn hit_file_item(row: u16, list_area: Rect, state: &AppState) -> AppAction {
     AppAction::Noop
 }
 
-/// Click on a branch (row 0 = header, rows 1..N = branches).
-fn hit_branch_item(row: u16, list_area: Rect, state: &AppState) -> AppAction {
-    let inner_y = list_area.y + 1;
-    if row < inner_y {
-        return AppAction::Noop;
-    }
-    let clicked_row = (row - inner_y) as usize;
-
-    if clicked_row == 0 {
-        return AppAction::Noop; // section header
-    }
-    let branch_idx = clicked_row - 1;
-    if branch_idx < state.filtered_branches.len() {
-        return AppAction::SelectBranch(branch_idx);
-    }
-
-    AppAction::Noop
-}
-
-/// Click on a commit (direct mapping, no headers).
-fn hit_log_item(row: u16, list_area: Rect, state: &AppState) -> AppAction {
-    let inner_y = list_area.y + 1;
-    if row < inner_y {
-        return AppAction::Noop;
-    }
-    let clicked_row = (row - inner_y) as usize;
-
-    if let Some(repo) = state.selected_repo_ref()
-        && clicked_row < repo.log_entries.len()
-    {
-        return AppAction::SelectLogEntry(clicked_row);
-    }
-
-    AppAction::Noop
-}
-
 /// Click on a PR (direct mapping, no headers).
 fn hit_pr_item(row: u16, list_area: Rect, state: &AppState) -> AppAction {
     let inner_y = list_area.y + 1;
@@ -291,21 +207,6 @@ fn hit_pr_item(row: u16, list_area: Rect, state: &AppState) -> AppAction {
     }
 
     AppAction::Noop
-}
-
-/// Click on a settings item (row 0 = header, row 1 = auto-fetch, row 2 = interval).
-fn hit_settings_item(row: u16, list_area: Rect) -> AppAction {
-    let inner_y = list_area.y + 1;
-    if row < inner_y {
-        return AppAction::Noop;
-    }
-    let clicked_row = (row - inner_y) as usize;
-
-    match clicked_row {
-        1 => AppAction::SelectSettingsItem(0),
-        2 => AppAction::SelectSettingsItem(1),
-        _ => AppAction::Noop,
-    }
 }
 
 fn in_rect(col: u16, row: u16, rect: Rect) -> bool {
@@ -340,10 +241,10 @@ mod tests {
         let screen = layout::build_layout(terminal);
         let row2 = screen.header_row2;
 
-        // " Changes " = 9 chars, " │ " = 3 chars, then " Branches " starts
-        let branches_x = row2.x + 9 + 3;
-        let action = map_mouse_event(make_click(branches_x + 1, row2.y), terminal, &state);
-        assert_eq!(action, AppAction::SwitchView(View::Branches));
+        // " Changes " = 9 chars, " │ " = 3 chars, then " PR " starts
+        let pr_x = row2.x + 9 + 3;
+        let action = map_mouse_event(make_click(pr_x + 1, row2.y), terminal, &state);
+        assert_eq!(action, AppAction::SwitchView(View::Pr));
     }
 
     #[test]

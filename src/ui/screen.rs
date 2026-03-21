@@ -3,8 +3,9 @@ use ratatui::widgets::Block;
 
 use crate::app::state::{AppState, Modal, View};
 use crate::ui::{
-    branch_panel, branches_view, commit_panel, copilot_login_panel, create_repo_panel, diff_panel,
-    help, layout, log_view, pr_view, settings_view, status_list, tabs, theme, view_tabs,
+    branch_manage_panel, branch_panel, commit_log_panel, commit_panel, copilot_login_panel,
+    create_repo_panel, diff_panel, help, layout, pr_view, settings_panel, status_list, tabs, theme,
+    view_tabs,
 };
 
 pub fn render(frame: &mut Frame, state: &AppState) {
@@ -22,17 +23,8 @@ pub fn render(frame: &mut Frame, state: &AppState) {
             status_list::render(frame, file_area, state);
             diff_panel::render(frame, diff_area, state);
         }
-        View::Branches => {
-            branches_view::render(frame, screen.view_area, state);
-        }
-        View::Commits => {
-            log_view::render(frame, screen.view_area, state);
-        }
         View::Pr => {
             pr_view::render(frame, screen.view_area, state);
-        }
-        View::Settings => {
-            settings_view::render(frame, screen.view_area, state);
         }
     }
 
@@ -46,6 +38,9 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         Modal::None => {}
         Modal::BranchSwitch => branch_panel::render_switch_modal(frame, area, state),
         Modal::BranchCreate => branch_panel::render_create_modal(frame, area, state),
+        Modal::BranchManage => branch_manage_panel::render(frame, area, state),
+        Modal::CommitLog => commit_log_panel::render(frame, area, state),
+        Modal::Settings => settings_panel::render(frame, area, state),
         Modal::Commit => commit_panel::render(frame, area, state),
         Modal::CopilotLogin => copilot_login_panel::render(frame, area, state),
         Modal::CreateRepo(_) => create_repo_panel::render(frame, area, state),

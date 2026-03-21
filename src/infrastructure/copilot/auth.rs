@@ -11,7 +11,7 @@ const SCOPE: &str = "read:user";
 
 pub fn config_dir() -> Result<PathBuf> {
     let base = dirs::config_dir().context("could not determine config directory")?;
-    Ok(base.join("git-tui"))
+    Ok(base.join("git-pilot"))
 }
 
 fn auth_file_path() -> Result<PathBuf> {
@@ -90,7 +90,7 @@ pub fn exchange_copilot_token(oauth_token: &str) -> Result<CopilotTokenResponse>
     let mut response = ureq::get("https://api.github.com/copilot_internal/v2/token")
         .header("Authorization", &format!("token {oauth_token}"))
         .header("Accept", "application/json")
-        .header("User-Agent", "git-tui")
+        .header("User-Agent", "git-pilot")
         .call()?;
     let body: CopilotTokenResponse = response.body_mut().read_json()?;
     Ok(body)
