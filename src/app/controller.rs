@@ -9,7 +9,9 @@ use ratatui::layout::Rect;
 
 use crate::app::actions::{AppAction, map_key_event};
 use crate::app::background::{BackgroundResult, DeviceCodeInfo, JobKind, create_channel};
-use crate::app::state::{AppState, CreatePrField, CreatePrState, Modal, RepositoryState};
+use crate::app::state::{
+    AppState, CreatePrField, CreatePrState, MessageLevel, Modal, RepositoryState,
+};
 use crate::domain::branch::BranchName;
 use crate::domain::commit::CommitMessage;
 use crate::domain::status::FileSection;
@@ -67,8 +69,10 @@ impl AppController {
             bg_receiver,
         };
         controller.state.copilot_authenticated = copilot_authenticated;
-        controller.state.settings = config::load_settings();
+        controller.state.settings = config::load_user_settings();
         controller.refresh_repositories_sync()?;
+        controller.resolve_current_settings();
+        controller.apply_default_view();
         controller.load_tracking_status();
         Ok(controller)
     }
@@ -90,6 +94,30 @@ impl AppController {
         }
     }
 
+    pub fn auto_refresh_status(&mut self) {
+        if self.state.selected_repo_path().is_some()
+            && !self.state.is_job_running(&JobKind::RefreshRepos)
+        {
+            let _ = self.refresh_repositories();
+        }
+    }
+
+    pub fn auto_refresh_branches(&mut self) {
+        if self.state.selected_repo_path().is_some()
+            && !self.state.is_job_running(&JobKind::RefreshRepos)
+        {
+            let _ = self.refresh_repositories();
+        }
+    }
+
+    pub fn auto_refresh_prs(&mut self) {
+        if self.state.selected_repo_path().is_some()
+            && !self.state.is_job_running(&JobKind::ListPrs)
+        {
+            let _ = self.refresh_prs();
+        }
+    }
+
     pub fn check_background_results(&mut self) {
         while let Ok(result) = self.bg_receiver.try_recv() {
             match result {
@@ -99,7 +127,10 @@ impl AppController {
                 }
                 BackgroundResult::BranchNameGenerated(job_id, Err(e)) => {
                     self.state.finish_job(job_id);
-                    self.state.set_error(format!("AI branch name failed: {e}"));
+                    self.state.set_message_popup(
+                        MessageLevel::Error,
+                        format!("AI branch name failed: {e}"),
+                    );
                 }
                 BackgroundResult::CommitMessageGenerated(job_id, Ok(msg)) => {
                     self.state.finish_job(job_id);
@@ -112,7 +143,10 @@ impl AppController {
                 }
                 BackgroundResult::CommitMessageGenerated(job_id, Err(e)) => {
                     self.state.finish_job(job_id);
-                    self.state.set_error(format!("AI generation failed: {e}"));
+                    self.state.set_message_popup(
+                        MessageLevel::Error,
+                        format!("AI generation failed: {e}"),
+                    );
                 }
                 BackgroundResult::DeviceCodeReceived(job_id, Ok(info)) => {
                     self.state.finish_job(job_id);
@@ -121,7 +155,8 @@ impl AppController {
                 }
                 BackgroundResult::DeviceCodeReceived(job_id, Err(e)) => {
                     self.state.finish_job(job_id);
-                    self.state.set_error(format!("Device flow failed: {e}"));
+                    self.state
+                        .set_message_popup(MessageLevel::Error, format!("Device flow failed: {e}"));
                 }
                 BackgroundResult::LoginCompleted(job_id, Ok(())) => {
                     self.state.finish_job(job_id);
@@ -139,7 +174,10 @@ impl AppController {
                     self.state.finish_job(job_id);
                     self.state.device_code = None;
                     self.state.modal = Modal::None;
-                    self.state.set_error(format!("Copilot login failed: {e}"));
+                    self.state.set_message_popup(
+                        MessageLevel::Error,
+                        format!("Copilot login failed: {e}"),
+                    );
                 }
                 BackgroundResult::FetchCompleted(job_id, result) => {
                     self.state.finish_job(job_id);
@@ -149,7 +187,9 @@ impl AppController {
                             self.load_tracking_status();
                             self.state.set_info("Fetched from remote");
                         }
-                        Err(e) => self.state.set_error(format!("Fetch failed: {e}")),
+                        Err(e) => self
+                            .state
+                            .set_message_popup(MessageLevel::Error, format!("Fetch failed: {e}")),
                     }
                 }
                 BackgroundResult::PushCompleted(job_id, result) => {
@@ -160,7 +200,9 @@ impl AppController {
                             self.load_tracking_status();
                             self.state.set_info("Pushed to remote");
                         }
-                        Err(e) => self.state.set_error(format!("Push failed: {e}")),
+                        Err(e) => self
+                            .state
+                            .set_message_popup(MessageLevel::Error, format!("Push failed: {e}")),
                     }
                 }
                 BackgroundResult::PullCompleted(job_id, result) => {
@@ -171,7 +213,9 @@ impl AppController {
                             self.load_tracking_status();
                             self.state.set_info("Pulled from remote");
                         }
-                        Err(e) => self.state.set_error(format!("Pull failed: {e}")),
+                        Err(e) => self
+                            .state
+                            .set_message_popup(MessageLevel::Error, format!("Pull failed: {e}")),
                     }
                 }
                 BackgroundResult::PrsLoaded(job_id, result) => {
@@ -186,7 +230,10 @@ impl AppController {
                             self.state.set_info(format!("Loaded {count} pull requests"));
                         }
                         Err(e) => {
-                            self.state.set_error(format!("Failed to load PRs: {e}"));
+                            self.state.set_message_popup(
+                                MessageLevel::Error,
+                                format!("Failed to load PRs: {e}"),
+                            );
                         }
                     }
                 }
@@ -209,6 +256,7 @@ impl AppController {
                             let selected_path = self.state.selected_repo_path();
                             let count = repos.len();
                             self.state.set_repositories(repos, selected_path);
+                            self.resolve_current_settings();
                             if count == 0 {
                                 self.state.set_info(
                                     "No Git repositories found in the current directory or descendants",
@@ -218,8 +266,10 @@ impl AppController {
                             }
                         }
                         Err(e) => {
-                            self.state
-                                .set_error(format!("Failed to refresh repositories: {e}"));
+                            self.state.set_message_popup(
+                                MessageLevel::Error,
+                                format!("Failed to refresh repositories: {e}"),
+                            );
                         }
                     }
                 }
@@ -231,8 +281,10 @@ impl AppController {
                             self.state.set_info(format!("Created repository: {url}"));
                         }
                         Err(e) => {
-                            self.state
-                                .set_error(format!("Failed to create repository: {e}"));
+                            self.state.set_message_popup(
+                                MessageLevel::Error,
+                                format!("Failed to create repository: {e}"),
+                            );
                         }
                     }
                 }
@@ -245,8 +297,10 @@ impl AppController {
                 }
                 BackgroundResult::PrDescriptionGenerated(job_id, Err(e)) => {
                     self.state.finish_job(job_id);
-                    self.state
-                        .set_error(format!("AI PR description failed: {e}"));
+                    self.state.set_message_popup(
+                        MessageLevel::Error,
+                        format!("AI PR description failed: {e}"),
+                    );
                 }
                 BackgroundResult::PrCreated(job_id, result) => {
                     self.state.finish_job(job_id);
@@ -259,7 +313,10 @@ impl AppController {
                             ));
                         }
                         Err(e) => {
-                            self.state.set_error(format!("Failed to create PR: {e}"));
+                            self.state.set_message_popup(
+                                MessageLevel::Error,
+                                format!("Failed to create PR: {e}"),
+                            );
                         }
                     }
                 }
@@ -275,7 +332,8 @@ impl AppController {
             self.state.branch_filter_active,
         );
         if let Err(error) = self.dispatch(action) {
-            self.state.set_error(error.to_string());
+            self.state
+                .set_message_popup(MessageLevel::Error, error.to_string());
         }
         Ok(())
     }
@@ -287,7 +345,8 @@ impl AppController {
     ) -> Result<()> {
         let action = map_mouse_event(mouse_event, terminal_area, &self.state);
         if let Err(error) = self.dispatch(action) {
-            self.state.set_error(error.to_string());
+            self.state
+                .set_message_popup(MessageLevel::Error, error.to_string());
         }
         Ok(())
     }
@@ -297,8 +356,14 @@ impl AppController {
             AppAction::Noop => {}
             AppAction::Quit => self.state.should_quit = true,
             AppAction::RefreshRepos => self.refresh_repositories()?,
-            AppAction::SelectNextRepo => self.state.select_next_repo(),
-            AppAction::SelectPreviousRepo => self.state.select_previous_repo(),
+            AppAction::SelectNextRepo => {
+                self.state.select_next_repo();
+                self.resolve_current_settings();
+            }
+            AppAction::SelectPreviousRepo => {
+                self.state.select_previous_repo();
+                self.resolve_current_settings();
+            }
             AppAction::SelectNextFile => self.state.select_next_file(),
             AppAction::SelectPreviousFile => self.state.select_previous_file(),
             AppAction::SelectNextBranch => self.state.select_next_branch(),
@@ -382,16 +447,17 @@ impl AppController {
             AppAction::FetchRemote => self.fetch_remote()?,
             AppAction::PushBranch => self.push_branch()?,
             AppAction::PullBranch => self.pull_branch()?,
-            AppAction::ToggleAutoFetch => self.toggle_auto_fetch()?,
-            AppAction::IncreaseAutoFetchInterval => self.adjust_auto_fetch_interval(30)?,
-            AppAction::DecreaseAutoFetchInterval => self.adjust_auto_fetch_interval(-30)?,
+            AppAction::ToggleSettingsBool => self.toggle_settings_bool()?,
+            AppAction::IncreaseSettingsValue => self.adjust_settings_value(1)?,
+            AppAction::DecreaseSettingsValue => self.adjust_settings_value(-1)?,
             AppAction::SelectNextSettingsItem => {
-                // Settings has: 0=auto_fetch toggle, 1=interval
-                self.state.selected_settings_item = (self.state.selected_settings_item + 1) % 2;
+                let count = crate::ui::settings_panel::SETTINGS_ITEM_COUNT;
+                self.state.selected_settings_item = (self.state.selected_settings_item + 1) % count;
             }
             AppAction::SelectPreviousSettingsItem => {
+                let count = crate::ui::settings_panel::SETTINGS_ITEM_COUNT;
                 self.state.selected_settings_item = if self.state.selected_settings_item == 0 {
-                    1
+                    count - 1
                 } else {
                     self.state.selected_settings_item - 1
                 };
@@ -476,9 +542,10 @@ impl AppController {
 
         let job_id = self.state.start_job(JobKind::AiBranchName);
         let sender = self.bg_sender.clone();
+        let ai_settings = self.state.settings.ai.clone();
 
         thread::spawn(move || {
-            let result = ai.generate_branch_name(&context);
+            let result = ai.generate_branch_name(&context, &ai_settings);
             let _ = sender.send(BackgroundResult::BranchNameGenerated(job_id, result));
         });
 
@@ -503,9 +570,10 @@ impl AppController {
 
         let job_id = self.state.start_job(JobKind::AiCommitMessage);
         let sender = self.bg_sender.clone();
+        let ai_settings = self.state.settings.ai.clone();
 
         thread::spawn(move || {
-            let result = ai.generate_commit_message(&context);
+            let result = ai.generate_commit_message(&context, &ai_settings);
             let _ = sender.send(BackgroundResult::CommitMessageGenerated(job_id, result));
         });
 
@@ -679,25 +747,112 @@ impl AppController {
         Ok(())
     }
 
-    fn toggle_auto_fetch(&mut self) -> Result<()> {
-        self.state.settings.auto_fetch_enabled = !self.state.settings.auto_fetch_enabled;
-        config::save_settings(&self.state.settings)?;
-        let status = if self.state.settings.auto_fetch_enabled {
-            "enabled"
-        } else {
-            "disabled"
+    fn toggle_settings_bool(&mut self) -> Result<()> {
+        use crate::ui::settings_panel::SettingsItem;
+        let item = SettingsItem::from_index(self.state.selected_settings_item);
+        let settings = &mut self.state.settings;
+        let msg = match item {
+            SettingsItem::FetchEnabled => {
+                settings.auto_refresh.fetch_enabled = !settings.auto_refresh.fetch_enabled;
+                format!(
+                    "Auto-fetch {}",
+                    if settings.auto_refresh.fetch_enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                )
+            }
+            SettingsItem::StatusEnabled => {
+                settings.auto_refresh.status_enabled = !settings.auto_refresh.status_enabled;
+                format!(
+                    "Auto-refresh status {}",
+                    if settings.auto_refresh.status_enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                )
+            }
+            SettingsItem::BranchesEnabled => {
+                settings.auto_refresh.branches_enabled = !settings.auto_refresh.branches_enabled;
+                format!(
+                    "Auto-refresh branches {}",
+                    if settings.auto_refresh.branches_enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                )
+            }
+            SettingsItem::PrsEnabled => {
+                settings.auto_refresh.prs_enabled = !settings.auto_refresh.prs_enabled;
+                format!(
+                    "Auto-refresh PRs {}",
+                    if settings.auto_refresh.prs_enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                )
+            }
+            SettingsItem::DraftByDefault => {
+                settings.pull_requests.draft_by_default = !settings.pull_requests.draft_by_default;
+                format!(
+                    "Draft by default {}",
+                    if settings.pull_requests.draft_by_default {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                )
+            }
+            _ => return Ok(()),
         };
-        self.state.set_info(format!("Auto-fetch {status}"));
+        config::save_settings(&self.state.settings)?;
+        self.state.set_info(msg);
         Ok(())
     }
 
-    fn adjust_auto_fetch_interval(&mut self, delta: i64) -> Result<()> {
-        let current = self.state.settings.auto_fetch_interval_secs as i64;
-        let new_val = (current + delta).clamp(30, 600) as u64;
-        self.state.settings.auto_fetch_interval_secs = new_val;
+    fn adjust_settings_value(&mut self, direction: i64) -> Result<()> {
+        use crate::ui::settings_panel::SettingsItem;
+        let item = SettingsItem::from_index(self.state.selected_settings_item);
+        let settings = &mut self.state.settings;
+        let msg = match item {
+            SettingsItem::FetchInterval => {
+                let current = settings.auto_refresh.fetch_interval_secs as i64;
+                let new_val = (current + direction * 30).clamp(30, 600) as u64;
+                settings.auto_refresh.fetch_interval_secs = new_val;
+                format!("Fetch interval: {new_val}s")
+            }
+            SettingsItem::StatusInterval => {
+                let current = settings.auto_refresh.status_interval_secs as i64;
+                let new_val = (current + direction * 10).clamp(10, 300) as u64;
+                settings.auto_refresh.status_interval_secs = new_val;
+                format!("Status refresh interval: {new_val}s")
+            }
+            SettingsItem::BranchesInterval => {
+                let current = settings.auto_refresh.branches_interval_secs as i64;
+                let new_val = (current + direction * 30).clamp(30, 600) as u64;
+                settings.auto_refresh.branches_interval_secs = new_val;
+                format!("Branches refresh interval: {new_val}s")
+            }
+            SettingsItem::PrsInterval => {
+                let current = settings.auto_refresh.prs_interval_secs as i64;
+                let new_val = (current + direction * 30).clamp(30, 600) as u64;
+                settings.auto_refresh.prs_interval_secs = new_val;
+                format!("PRs refresh interval: {new_val}s")
+            }
+            SettingsItem::SubjectMaxLength => {
+                let current = settings.commit.subject_max_length as i64;
+                let new_val = (current + direction).clamp(50, 120) as usize;
+                settings.commit.subject_max_length = new_val;
+                format!("Subject max length: {new_val}")
+            }
+            _ => return Ok(()),
+        };
         config::save_settings(&self.state.settings)?;
-        self.state
-            .set_info(format!("Auto-fetch interval: {new_val}s"));
+        self.state.set_info(msg);
         Ok(())
     }
 
@@ -851,6 +1006,22 @@ impl AppController {
             self.state.selected_branch = self.state.current_branch_index().unwrap_or(0);
             self.state.diff_content = None;
             self.state.diff_scroll = 0;
+            self.resolve_current_settings();
+        }
+    }
+
+    fn resolve_current_settings(&mut self) {
+        if let Some(repo_path) = self.state.selected_repo_path() {
+            self.state.settings = config::resolve_settings(&repo_path);
+        } else {
+            self.state.settings = config::load_user_settings();
+        }
+    }
+
+    fn apply_default_view(&mut self) {
+        match self.state.settings.ui.default_view.as_str() {
+            "pr" => self.state.switch_view(crate::app::state::View::Pr),
+            _ => self.state.switch_view(crate::app::state::View::Changes),
         }
     }
 
@@ -1073,6 +1244,10 @@ impl AppController {
             Modal::CopilotLogin => Ok(()),
             Modal::CreateRepo(_) => self.confirm_create_repo(),
             Modal::CreatePr => self.confirm_create_pr(),
+            Modal::Message => {
+                self.state.close_modal();
+                Ok(())
+            }
         }
     }
 
@@ -1270,23 +1445,39 @@ impl AppController {
 
         self.github.check_gh_auth()?;
 
-        let base_branch = if repo.branches.iter().any(|b| b == "main") {
-            "main".to_string()
-        } else if repo.branches.iter().any(|b| b == "master") {
-            "master".to_string()
-        } else {
-            repo.branches
-                .first()
-                .cloned()
-                .ok_or_else(|| anyhow!("no branches found"))?
-        };
+        let base_branch =
+            if let Some(ref configured) = self.state.settings.pull_requests.default_base_branch {
+                if repo.branches.iter().any(|b| b == configured) {
+                    configured.clone()
+                } else if repo.branches.iter().any(|b| b == "main") {
+                    "main".to_string()
+                } else if repo.branches.iter().any(|b| b == "master") {
+                    "master".to_string()
+                } else {
+                    repo.branches
+                        .first()
+                        .cloned()
+                        .ok_or_else(|| anyhow!("no branches found"))?
+                }
+            } else if repo.branches.iter().any(|b| b == "main") {
+                "main".to_string()
+            } else if repo.branches.iter().any(|b| b == "master") {
+                "master".to_string()
+            } else {
+                repo.branches
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| anyhow!("no branches found"))?
+            };
+
+        let draft = self.state.settings.pull_requests.draft_by_default;
 
         self.state.create_pr_state = Some(CreatePrState {
             title_input: crate::shared::text_input::TextInput::new(),
             body_input: crate::shared::text_input::TextInput::new(),
             base_branch,
             head_branch,
-            draft: false,
+            draft,
             active_field: CreatePrField::Title,
         });
         self.state.modal = Modal::CreatePr;
@@ -1324,9 +1515,10 @@ impl AppController {
 
         let job_id = self.state.start_job(JobKind::AiPrDescription);
         let sender = self.bg_sender.clone();
+        let ai_settings = self.state.settings.ai.clone();
 
         thread::spawn(move || {
-            let result = ai.generate_pr_description(&commits, &diff);
+            let result = ai.generate_pr_description(&commits, &diff, &ai_settings);
             let _ = sender.send(BackgroundResult::PrDescriptionGenerated(job_id, result));
         });
 
@@ -1362,8 +1554,11 @@ impl AppController {
         let job_id = self.state.start_job(JobKind::CreatePr);
         let sender = self.bg_sender.clone();
         let github = self.github;
+        let remote = self.remote;
         thread::spawn(move || {
-            let result = github.create_pr(&repo_path, &params);
+            let result = remote
+                .push(&repo_path, &params.head)
+                .and_then(|()| github.create_pr(&repo_path, &params));
             let _ = sender.send(BackgroundResult::PrCreated(job_id, result));
         });
         Ok(())

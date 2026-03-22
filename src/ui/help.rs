@@ -1,7 +1,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Clear, Paragraph};
 
-use crate::app::state::{AppState, View};
+use crate::app::state::{AppState, Modal, View};
 use crate::app::suggestions::compute_suggestions;
 use crate::shared::shortcuts;
 use crate::ui::layout::centered_rect;
@@ -10,7 +10,7 @@ use crate::ui::theme;
 
 pub fn render_footer(frame: &mut Frame, area: Rect, state: &AppState) {
     let left_spans = match state.message.as_ref().map(|message| &message.level) {
-        Some(crate::app::state::MessageLevel::Error) => {
+        Some(crate::app::state::MessageLevel::Error) if state.modal != Modal::Message => {
             let text = state
                 .message
                 .as_ref()
