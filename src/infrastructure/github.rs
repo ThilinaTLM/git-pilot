@@ -85,25 +85,25 @@ impl GhCliGitHubService {
             command.arg("--draft");
         }
 
-        command
-            .arg("--json")
-            .arg("number,title,state,url,headRefName");
-
         let output = run_command(&mut command)?;
-        let raw = String::from_utf8_lossy(&output.stdout);
-        let pr: GhPrJson =
-            serde_json::from_str(&raw).map_err(|e| anyhow!("failed to parse PR output: {e}"))?;
+        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if url.is_empty() {
+            return Err(anyhow!("gh pr create succeeded but returned no URL"));
+        }
+
+        // Extract PR number from URL (e.g. https://github.com/owner/repo/pull/42)
+        let number = url
+            .rsplit('/')
+            .next()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0);
 
         Ok(PrInfo {
-            number: pr.number,
-            title: pr.title,
-            state: match pr.state.to_uppercase().as_str() {
-                "MERGED" => PrState::Merged,
-                "CLOSED" => PrState::Closed,
-                _ => PrState::Open,
-            },
-            url: pr.url,
-            head_branch: pr.head_ref_name,
+            number,
+            title: params.title.clone(),
+            state: PrState::Open,
+            url,
+            head_branch: params.head.clone(),
             checks_passed: None,
         })
     }
