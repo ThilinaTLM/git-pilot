@@ -8,6 +8,7 @@ pub mod create_repo_panel;
 pub mod diff_panel;
 pub mod help;
 pub mod layout;
+pub mod message_panel;
 pub mod mouse;
 pub mod pr_view;
 pub mod remotes_view;

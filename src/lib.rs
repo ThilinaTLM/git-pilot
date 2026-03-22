@@ -17,6 +17,25 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
+struct AutoRefreshTimers {
+    last_fetch: Instant,
+    last_status: Instant,
+    last_branches: Instant,
+    last_prs: Instant,
+}
+
+impl AutoRefreshTimers {
+    fn new() -> Self {
+        let now = Instant::now();
+        Self {
+            last_fetch: now,
+            last_status: now,
+            last_branches: now,
+            last_prs: now,
+        }
+    }
+}
+
 pub fn run() -> Result<()> {
     let mut stdout = io::stdout();
     enable_raw_mode()?;
@@ -44,19 +63,35 @@ fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     controller: &mut AppController,
 ) -> Result<()> {
-    let mut last_auto_fetch = Instant::now();
+    let mut timers = AutoRefreshTimers::new();
 
     loop {
         controller.check_background_results();
 
-        // Auto-fetch if enabled and interval has elapsed
-        let settings = &controller.state().settings;
-        if settings.auto_fetch_enabled {
-            let interval = Duration::from_secs(settings.auto_fetch_interval_secs);
-            if last_auto_fetch.elapsed() >= interval {
-                controller.auto_fetch();
-                last_auto_fetch = Instant::now();
-            }
+        // Auto-refresh checks (clone to avoid borrow conflict)
+        let ar = controller.state().settings.auto_refresh.clone();
+        if ar.fetch_enabled
+            && timers.last_fetch.elapsed() >= Duration::from_secs(ar.fetch_interval_secs)
+        {
+            controller.auto_fetch();
+            timers.last_fetch = Instant::now();
+        }
+        if ar.status_enabled
+            && timers.last_status.elapsed() >= Duration::from_secs(ar.status_interval_secs)
+        {
+            controller.auto_refresh_status();
+            timers.last_status = Instant::now();
+        }
+        if ar.branches_enabled
+            && timers.last_branches.elapsed() >= Duration::from_secs(ar.branches_interval_secs)
+        {
+            controller.auto_refresh_branches();
+            timers.last_branches = Instant::now();
+        }
+        if ar.prs_enabled && timers.last_prs.elapsed() >= Duration::from_secs(ar.prs_interval_secs)
+        {
+            controller.auto_refresh_prs();
+            timers.last_prs = Instant::now();
         }
 
         controller.tick_spinner();

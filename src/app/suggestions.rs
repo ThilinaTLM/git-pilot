@@ -144,6 +144,10 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                     label: "cancel",
                 },
             ],
+            Modal::Message => vec![Suggestion {
+                key_hint: "esc",
+                label: "close",
+            }],
             Modal::None => vec![],
         };
     }
