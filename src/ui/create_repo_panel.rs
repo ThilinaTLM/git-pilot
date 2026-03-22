@@ -10,6 +10,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         return;
     };
 
+    theme::render_backdrop(frame, area);
     let modal = centered_rect(55, 50, area);
     frame.render_widget(Clear, modal);
 

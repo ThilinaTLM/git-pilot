@@ -241,7 +241,12 @@ impl AppController {
     }
 
     pub fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<()> {
-        let action = map_key_event(&self.state.active_view, &self.state.modal, key_event);
+        let action = map_key_event(
+            &self.state.active_view,
+            &self.state.modal,
+            key_event,
+            self.state.branch_filter_active,
+        );
         if let Err(error) = self.dispatch(action) {
             self.state.set_error(error.to_string());
         }
@@ -276,20 +281,8 @@ impl AppController {
             AppAction::StageAll => self.stage_all()?,
             AppAction::UnstageAll => self.unstage_all()?,
             AppAction::ToggleStage => self.toggle_stage()?,
-            AppAction::OpenBranchSwitch => self.state.open_branch_switch(),
+            AppAction::OpenBranches => self.state.open_branches(),
             AppAction::OpenBranchCreate => self.state.open_branch_create(),
-            AppAction::OpenBranchManage => {
-                self.state.modal = Modal::BranchManage;
-                self.state.branch_filter.clear();
-                self.state.recompute_branch_filter();
-                let real_idx = self.state.current_branch_index().unwrap_or(0);
-                self.state.selected_branch = self
-                    .state
-                    .filtered_branches
-                    .iter()
-                    .position(|&i| i == real_idx)
-                    .unwrap_or(0);
-            }
             AppAction::OpenCommitLog => {
                 self.state.modal = Modal::CommitLog;
                 self.state.selected_log_entry = 0;
@@ -399,6 +392,15 @@ impl AppController {
                     self.state.selected_settings_item = idx;
                 }
             }
+            AppAction::ActivateBranchFilter => {
+                self.state.branch_filter_active = true;
+                self.state.branch_filter.clear();
+                self.state.recompute_branch_filter();
+            }
+            AppAction::DeactivateBranchFilter => {
+                self.state.branch_filter_active = false;
+            }
+            AppAction::ConfirmMerge => self.confirm_merge()?,
         }
 
         self.state.sync_selection();
@@ -978,18 +980,30 @@ impl AppController {
     }
 
     fn merge_branch(&mut self) -> Result<()> {
+        let branch_name = self
+            .state
+            .selected_branch_name()
+            .ok_or_else(|| anyhow!("no branch selected"))?
+            .to_string();
+        self.state.merge_confirm_branch = Some(branch_name);
+        self.state.modal = Modal::MergeConfirm;
+        Ok(())
+    }
+
+    fn confirm_merge(&mut self) -> Result<()> {
         let repo_path = self
             .state
             .selected_repo_path()
             .ok_or_else(|| anyhow!("no repository selected"))?;
         let branch_name = self
             .state
-            .selected_branch_name()
-            .ok_or_else(|| anyhow!("no branch selected"))?
-            .to_string();
+            .merge_confirm_branch
+            .take()
+            .ok_or_else(|| anyhow!("no branch to merge"))?;
         let branch = BranchName::try_from(branch_name)?;
         self.git.merge_branch(&repo_path, &branch)?;
         self.reload_selected_repo()?;
+        self.state.modal = Modal::Branches;
         self.state.set_info(format!("Merged {}", branch.as_str()));
         Ok(())
     }
@@ -997,32 +1011,14 @@ impl AppController {
     fn confirm_modal(&mut self) -> Result<()> {
         match self.state.modal {
             Modal::None => Ok(()),
-            Modal::BranchSwitch => self.confirm_branch_switch(),
+            Modal::Branches => self.confirm_branch_switch(),
             Modal::BranchCreate => self.confirm_branch_create(),
-            Modal::BranchManage => self.confirm_branch_manage_switch(),
+            Modal::MergeConfirm => self.confirm_merge(),
             Modal::CommitLog | Modal::Settings => Ok(()),
             Modal::Commit => self.confirm_commit(),
             Modal::CopilotLogin => Ok(()),
             Modal::CreateRepo(_) => self.confirm_create_repo(),
         }
-    }
-
-    fn confirm_branch_manage_switch(&mut self) -> Result<()> {
-        let repo_path = self
-            .state
-            .selected_repo_path()
-            .ok_or_else(|| anyhow!("no repository selected"))?;
-        let branch_name = self
-            .state
-            .selected_branch_name()
-            .ok_or_else(|| anyhow!("no branch selected"))?
-            .to_string();
-        let branch = BranchName::try_from(branch_name)?;
-        self.git.switch_branch(&repo_path, &branch)?;
-        self.reload_selected_repo()?;
-        self.state
-            .set_info(format!("Switched to {}", branch.as_str()));
-        Ok(())
     }
 
     fn confirm_branch_switch(&mut self) -> Result<()> {
@@ -1038,7 +1034,6 @@ impl AppController {
         let branch = BranchName::try_from(branch_name)?;
         self.git.switch_branch(&repo_path, &branch)?;
         self.reload_selected_repo()?;
-        self.state.close_modal();
         self.state
             .set_info(format!("Switched to {}", branch.as_str()));
         Ok(())
@@ -1118,13 +1113,14 @@ impl AppController {
                 }
                 _ => {}
             },
-            Modal::BranchSwitch => {
+            Modal::Branches if self.state.branch_filter_active => {
                 self.state.branch_filter.push(ch);
                 self.state.recompute_branch_filter();
             }
             Modal::None
             | Modal::CopilotLogin
-            | Modal::BranchManage
+            | Modal::Branches
+            | Modal::MergeConfirm
             | Modal::CommitLog
             | Modal::Settings => {}
         }
@@ -1151,13 +1147,14 @@ impl AppController {
                 }
                 _ => {}
             },
-            Modal::BranchSwitch => {
+            Modal::Branches if self.state.branch_filter_active => {
                 self.state.branch_filter.pop();
                 self.state.recompute_branch_filter();
             }
             Modal::None
             | Modal::CopilotLogin
-            | Modal::BranchManage
+            | Modal::Branches
+            | Modal::MergeConfirm
             | Modal::CommitLog
             | Modal::Settings => {}
         }

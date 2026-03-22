@@ -69,14 +69,15 @@ fn render_suggestion_spans(state: &AppState) -> Vec<Span<'static>> {
 }
 
 pub fn render_overlay(frame: &mut Frame, area: Rect, state: &AppState) {
+    theme::render_backdrop(frame, area);
     let modal = centered_rect(74, 78, area);
     frame.render_widget(Clear, modal);
-    let block = theme::modal_block("Keyboard Shortcuts");
+    let block = theme::modal_elevated_block("Keyboard Shortcuts");
     let inner = block.inner(modal);
     frame.render_widget(block, modal);
 
     let paragraph = Paragraph::new(help_text(state))
-        .style(theme::text_style())
+        .style(theme::modal_text_style())
         .wrap(ratatui::widgets::Wrap { trim: true });
     frame.render_widget(paragraph, inner);
 }
@@ -86,7 +87,7 @@ fn help_text(state: &AppState) -> Text<'static> {
 
     lines.push(Line::from(vec![Span::styled(
         "Press ? again to close this view.",
-        theme::warning_text_style().add_modifier(Modifier::BOLD),
+        theme::modal_accent_style(),
     )]));
     lines.push(Line::default());
 
@@ -116,13 +117,18 @@ fn render_section(
 ) {
     lines.push(Line::from(vec![Span::styled(
         title,
-        theme::accent_text_style(),
+        theme::modal_accent_style(),
     )]));
 
     for entry in entries {
         lines.push(Line::from(vec![
-            Span::styled(format!("{:<18}", entry.keys), theme::success_text_style()),
-            Span::styled(entry.description, theme::text_style()),
+            Span::styled(
+                format!("{:<18}", entry.keys),
+                Style::default()
+                    .fg(Color::Rgb(74, 222, 128))
+                    .bg(theme::MODAL_BG),
+            ),
+            Span::styled(entry.description, theme::modal_text_style()),
         ]));
     }
 

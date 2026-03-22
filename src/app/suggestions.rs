@@ -9,31 +9,23 @@ pub struct Suggestion {
 pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
     if state.modal != Modal::None {
         return match state.modal {
-            Modal::BranchSwitch => vec![
-                Suggestion {
-                    key_hint: "j/k",
-                    label: "move",
-                },
-                Suggestion {
-                    key_hint: "Enter",
-                    label: "switch",
-                },
-                Suggestion {
-                    key_hint: "Esc",
-                    label: "cancel",
-                },
-            ],
-            Modal::BranchCreate => vec![
-                Suggestion {
-                    key_hint: "Enter",
-                    label: "create",
-                },
-                Suggestion {
-                    key_hint: "Esc",
-                    label: "cancel",
-                },
-            ],
-            Modal::BranchManage => {
+            Modal::Branches => {
+                if state.branch_filter_active {
+                    return vec![
+                        Suggestion {
+                            key_hint: "↑/↓",
+                            label: "navigate",
+                        },
+                        Suggestion {
+                            key_hint: "Enter",
+                            label: "switch",
+                        },
+                        Suggestion {
+                            key_hint: "Esc",
+                            label: "exit filter",
+                        },
+                    ];
+                }
                 let mut suggestions = Vec::new();
                 if state.selected_branch_name().is_some() {
                     suggestions.push(Suggestion {
@@ -50,6 +42,10 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                     });
                 }
                 suggestions.push(Suggestion {
+                    key_hint: "/",
+                    label: "filter",
+                });
+                suggestions.push(Suggestion {
                     key_hint: "n",
                     label: "new branch",
                 });
@@ -59,6 +55,26 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                 });
                 suggestions
             }
+            Modal::BranchCreate => vec![
+                Suggestion {
+                    key_hint: "Enter",
+                    label: "create",
+                },
+                Suggestion {
+                    key_hint: "Esc",
+                    label: "cancel",
+                },
+            ],
+            Modal::MergeConfirm => vec![
+                Suggestion {
+                    key_hint: "y",
+                    label: "confirm",
+                },
+                Suggestion {
+                    key_hint: "n",
+                    label: "cancel",
+                },
+            ],
             Modal::CommitLog => vec![
                 Suggestion {
                     key_hint: "j/k",
@@ -162,14 +178,10 @@ fn compute_changes_suggestions(state: &AppState) -> Vec<Suggestion> {
             key_hint: "n",
             label: "new branch",
         });
-        suggestions.push(Suggestion {
-            key_hint: "b",
-            label: "switch branch",
-        });
     }
 
     suggestions.push(Suggestion {
-        key_hint: "B",
+        key_hint: "b",
         label: "branches",
     });
     suggestions.push(Suggestion {

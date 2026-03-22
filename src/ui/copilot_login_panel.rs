@@ -6,6 +6,7 @@ use crate::ui::layout::centered_rect;
 use crate::ui::theme;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+    theme::render_backdrop(frame, area);
     let modal = centered_rect(50, 30, area);
     frame.render_widget(Clear, modal);
 

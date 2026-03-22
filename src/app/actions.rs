@@ -30,7 +30,7 @@ pub enum AppAction {
     StageAll,
     UnstageAll,
     ToggleStage,
-    OpenBranchSwitch,
+    OpenBranches,
     OpenBranchCreate,
     OpenCommitPanel,
     OpenCommitAmend,
@@ -68,14 +68,21 @@ pub enum AppAction {
     SelectLogEntry(usize),
     SelectPr(usize),
     SelectSettingsItem(usize),
-    OpenBranchManage,
     OpenCommitLog,
     OpenSettings,
+    ActivateBranchFilter,
+    DeactivateBranchFilter,
+    ConfirmMerge,
 }
 
-pub fn map_key_event(view: &View, modal: &Modal, key_event: KeyEvent) -> AppAction {
+pub fn map_key_event(
+    view: &View,
+    modal: &Modal,
+    key_event: KeyEvent,
+    branch_filter_active: bool,
+) -> AppAction {
     if *modal != Modal::None {
-        return map_modal_key(modal, key_event);
+        return map_modal_key(modal, key_event, branch_filter_active);
     }
     if let Some(action) = map_global_key(key_event) {
         return action;
@@ -86,17 +93,17 @@ pub fn map_key_event(view: &View, modal: &Modal, key_event: KeyEvent) -> AppActi
     }
 }
 
-fn map_modal_key(modal: &Modal, key_event: KeyEvent) -> AppAction {
+fn map_modal_key(modal: &Modal, key_event: KeyEvent, branch_filter_active: bool) -> AppAction {
     match modal {
         Modal::None => AppAction::Noop,
-        Modal::BranchSwitch => map_branch_switch_key(key_event),
+        Modal::Branches => map_branches_modal_key(key_event, branch_filter_active),
         Modal::BranchCreate => map_branch_create_key(key_event),
-        Modal::BranchManage => map_branch_manage_key(key_event),
+        Modal::MergeConfirm => map_merge_confirm_key(key_event),
         Modal::CommitLog => map_commit_log_key(key_event),
         Modal::Settings => map_settings_modal_key(key_event),
         Modal::Commit => map_commit_input_key(key_event),
         Modal::CopilotLogin => match key_event.code {
-            KeyCode::Esc => AppAction::CloseModal,
+            KeyCode::Esc | KeyCode::Char('q') => AppAction::CloseModal,
             _ => AppAction::Noop,
         },
         Modal::CreateRepo(step) => map_create_repo_key(step, key_event),
@@ -144,8 +151,7 @@ fn map_changes_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Char('U') => AppAction::UnstageAll,
         KeyCode::Char('c') => AppAction::OpenCommitPanel,
         KeyCode::Char('a') => AppAction::OpenCommitAmend,
-        KeyCode::Char('b') => AppAction::OpenBranchSwitch,
-        KeyCode::Char('B') => AppAction::OpenBranchManage,
+        KeyCode::Char('b') => AppAction::OpenBranches,
         KeyCode::Char('n') => AppAction::OpenBranchCreate,
         KeyCode::Char('L') => AppAction::OpenCommitLog,
         KeyCode::Char('R') => AppAction::OpenCreateRepo,
@@ -155,19 +161,41 @@ fn map_changes_key(key_event: KeyEvent) -> AppAction {
     }
 }
 
-fn map_branch_manage_key(key_event: KeyEvent) -> AppAction {
+fn map_branches_modal_key(key_event: KeyEvent, filter_active: bool) -> AppAction {
+    if filter_active {
+        return match key_event.code {
+            KeyCode::Esc => AppAction::DeactivateBranchFilter,
+            KeyCode::Enter => AppAction::ConfirmModal,
+            KeyCode::Down => AppAction::SelectNextBranch,
+            KeyCode::Up => AppAction::SelectPreviousBranch,
+            KeyCode::Backspace => AppAction::Backspace,
+            KeyCode::Char(ch) if !key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                AppAction::InsertChar(ch)
+            }
+            _ => AppAction::Noop,
+        };
+    }
+
     match key_event.code {
-        KeyCode::Esc => AppAction::CloseModal,
+        KeyCode::Esc | KeyCode::Char('q') => AppAction::CloseModal,
         KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextBranch,
         KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousBranch,
         KeyCode::Enter => AppAction::ConfirmModal,
-        KeyCode::Char('/') => AppAction::OpenBranchSwitch,
+        KeyCode::Char('/') => AppAction::ActivateBranchFilter,
         KeyCode::Char('n') => AppAction::OpenBranchCreate,
         KeyCode::Char('d') => AppAction::DeleteBranch,
         KeyCode::Char('m') => AppAction::MergeBranch,
         KeyCode::Char('f') => AppAction::FetchRemote,
         KeyCode::Char('p') => AppAction::PushBranch,
         KeyCode::Char('P') => AppAction::PullBranch,
+        _ => AppAction::Noop,
+    }
+}
+
+fn map_merge_confirm_key(key_event: KeyEvent) -> AppAction {
+    match key_event.code {
+        KeyCode::Char('y') => AppAction::ConfirmMerge,
+        KeyCode::Char('n') | KeyCode::Char('q') | KeyCode::Esc => AppAction::CloseModal,
         _ => AppAction::Noop,
     }
 }
@@ -182,7 +210,7 @@ fn map_commit_log_key(key_event: KeyEvent) -> AppAction {
     }
 
     match key_event.code {
-        KeyCode::Esc => AppAction::CloseModal,
+        KeyCode::Esc | KeyCode::Char('q') => AppAction::CloseModal,
         KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextLogEntry,
         KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousLogEntry,
         KeyCode::PageDown => AppAction::ScrollLogDown,
@@ -193,7 +221,7 @@ fn map_commit_log_key(key_event: KeyEvent) -> AppAction {
 
 fn map_settings_modal_key(key_event: KeyEvent) -> AppAction {
     match key_event.code {
-        KeyCode::Esc => AppAction::CloseModal,
+        KeyCode::Esc | KeyCode::Char('q') => AppAction::CloseModal,
         KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextSettingsItem,
         KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousSettingsItem,
         KeyCode::Char(' ') | KeyCode::Enter => AppAction::ToggleAutoFetch,
@@ -250,20 +278,6 @@ fn map_create_repo_key(step: &CreateRepoStep, key_event: KeyEvent) -> AppAction 
     }
 }
 
-fn map_branch_switch_key(key_event: KeyEvent) -> AppAction {
-    match key_event.code {
-        KeyCode::Esc => AppAction::CloseModal,
-        KeyCode::Enter => AppAction::ConfirmModal,
-        KeyCode::Down => AppAction::SelectNextBranch,
-        KeyCode::Up => AppAction::SelectPreviousBranch,
-        KeyCode::Backspace => AppAction::Backspace,
-        KeyCode::Char(ch) if !key_event.modifiers.contains(KeyModifiers::CONTROL) => {
-            AppAction::InsertChar(ch)
-        }
-        _ => AppAction::Noop,
-    }
-}
-
 fn map_commit_input_key(key_event: KeyEvent) -> AppAction {
     if key_event.modifiers == KeyModifiers::CONTROL {
         return match key_event.code {
@@ -315,6 +329,7 @@ mod tests {
             &View::Changes,
             &Modal::None,
             KeyEvent::new(KeyCode::Char('S'), KeyModifiers::SHIFT),
+            false,
         );
 
         assert_eq!(action, AppAction::StageAll);
@@ -326,6 +341,7 @@ mod tests {
             &View::Changes,
             &Modal::Commit,
             KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL),
+            false,
         );
 
         assert_eq!(action, AppAction::InsertNewline);
@@ -337,6 +353,7 @@ mod tests {
             &View::Changes,
             &Modal::None,
             KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+            false,
         );
 
         assert_eq!(action, AppAction::SelectNextRepo);
@@ -348,20 +365,46 @@ mod tests {
             &View::Changes,
             &Modal::None,
             KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE),
+            false,
         );
 
         assert_eq!(action, AppAction::ToggleStage);
     }
 
     #[test]
-    fn maps_branch_manage_modal_delete() {
+    fn maps_branches_modal_delete() {
         let action = map_key_event(
             &View::Changes,
-            &Modal::BranchManage,
+            &Modal::Branches,
             KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE),
+            false,
         );
 
         assert_eq!(action, AppAction::DeleteBranch);
+    }
+
+    #[test]
+    fn maps_branches_modal_filter_mode_char() {
+        let action = map_key_event(
+            &View::Changes,
+            &Modal::Branches,
+            KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE),
+            true,
+        );
+
+        assert_eq!(action, AppAction::InsertChar('d'));
+    }
+
+    #[test]
+    fn maps_branches_modal_filter_esc_deactivates() {
+        let action = map_key_event(
+            &View::Changes,
+            &Modal::Branches,
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            true,
+        );
+
+        assert_eq!(action, AppAction::DeactivateBranchFilter);
     }
 
     #[test]
@@ -370,6 +413,7 @@ mod tests {
             &View::Changes,
             &Modal::None,
             KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE),
+            false,
         );
 
         assert_eq!(action, AppAction::SwitchView(View::Pr));

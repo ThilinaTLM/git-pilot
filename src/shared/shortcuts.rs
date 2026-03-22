@@ -77,11 +77,7 @@ pub const CHANGES_SHORTCUTS: &[ShortcutEntry] = &[
     },
     ShortcutEntry {
         keys: "b",
-        description: "open branch switcher",
-    },
-    ShortcutEntry {
-        keys: "B",
-        description: "open branch management",
+        description: "open branches",
     },
     ShortcutEntry {
         keys: "n",

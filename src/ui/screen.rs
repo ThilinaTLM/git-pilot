@@ -36,9 +36,9 @@ pub fn render(frame: &mut Frame, state: &AppState) {
 
     match state.modal {
         Modal::None => {}
-        Modal::BranchSwitch => branch_panel::render_switch_modal(frame, area, state),
+        Modal::Branches => branch_manage_panel::render(frame, area, state),
         Modal::BranchCreate => branch_panel::render_create_modal(frame, area, state),
-        Modal::BranchManage => branch_manage_panel::render(frame, area, state),
+        Modal::MergeConfirm => branch_manage_panel::render_merge_confirm(frame, area, state),
         Modal::CommitLog => commit_log_panel::render(frame, area, state),
         Modal::Settings => settings_panel::render(frame, area, state),
         Modal::Commit => commit_panel::render(frame, area, state),

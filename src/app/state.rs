@@ -53,9 +53,9 @@ pub struct CreateRepoState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Modal {
     None,
-    BranchSwitch,
+    Branches,
     BranchCreate,
-    BranchManage,
+    MergeConfirm,
     CommitLog,
     Settings,
     Commit,
@@ -214,7 +214,9 @@ pub struct AppState {
     pub amend_mode: bool,
     pub branch_tracking: Option<TrackingStatus>,
     pub branch_filter: String,
+    pub branch_filter_active: bool,
     pub filtered_branches: Vec<usize>,
+    pub merge_confirm_branch: Option<String>,
     pub settings: AppSettings,
     pub selected_settings_item: usize,
 }
@@ -250,7 +252,9 @@ impl Default for AppState {
             amend_mode: false,
             branch_tracking: None,
             branch_filter: String::new(),
+            branch_filter_active: false,
             filtered_branches: Vec::new(),
+            merge_confirm_branch: None,
             settings: AppSettings::default(),
             selected_settings_item: 0,
         }
@@ -466,11 +470,11 @@ impl AppState {
         }
     }
 
-    pub fn open_branch_switch(&mut self) {
-        self.modal = Modal::BranchSwitch;
+    pub fn open_branches(&mut self) {
+        self.modal = Modal::Branches;
         self.branch_filter.clear();
+        self.branch_filter_active = false;
         self.recompute_branch_filter();
-        // Map real branch index to filtered index
         let real_idx = self.current_branch_index().unwrap_or(0);
         self.selected_branch = self
             .filtered_branches
@@ -490,11 +494,18 @@ impl AppState {
     }
 
     pub fn close_modal(&mut self) {
+        if self.modal == Modal::MergeConfirm {
+            self.modal = Modal::Branches;
+            self.merge_confirm_branch = None;
+            return;
+        }
         self.modal = Modal::None;
         self.branch_name_input.clear();
         self.branch_filter.clear();
+        self.branch_filter_active = false;
         self.commit_message_input.clear();
         self.create_repo_state = None;
+        self.merge_confirm_branch = None;
         self.amend_mode = false;
         self.recompute_branch_filter();
     }

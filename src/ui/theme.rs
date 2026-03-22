@@ -2,6 +2,8 @@ use ratatui::prelude::*;
 use ratatui::symbols;
 use ratatui::widgets::{Block, Borders, Padding};
 
+const BACKDROP_BG: Color = Color::Rgb(2, 6, 14);
+
 pub const PAGE_MARGIN_X: u16 = 2;
 pub const PAGE_MARGIN_Y: u16 = 1;
 pub const SECTION_GAP: u16 = 1;
@@ -26,8 +28,9 @@ pub fn pane_block(title: impl Into<String>) -> Block<'static> {
     chrome_block(title.into(), Padding::new(1, 1, 0, 0))
 }
 
-pub fn modal_block(title: impl Into<String>) -> Block<'static> {
-    chrome_block(title.into(), Padding::new(1, 1, 1, 0))
+pub fn render_backdrop(frame: &mut ratatui::Frame, area: Rect) {
+    let backdrop = Block::default().style(Style::default().bg(BACKDROP_BG));
+    frame.render_widget(backdrop, area);
 }
 
 pub fn footer_block() -> Block<'static> {
@@ -146,7 +149,7 @@ pub fn title_line(title: impl Into<String>) -> Line<'static> {
     )])
 }
 
-pub const MODAL_BG: Color = Color::Rgb(30, 41, 59);
+pub const MODAL_BG: Color = Color::Rgb(22, 33, 52);
 
 pub fn modal_elevated_block(title: impl Into<String>) -> Block<'static> {
     Block::default()
@@ -160,7 +163,7 @@ pub fn modal_elevated_block(title: impl Into<String>) -> Block<'static> {
         )]))
         .borders(Borders::ALL)
         .border_set(symbols::border::ROUNDED)
-        .border_style(Style::default().fg(ACCENT_SOFT).bg(MODAL_BG))
+        .border_style(Style::default().fg(BORDER).bg(MODAL_BG))
         .padding(Padding::new(2, 2, 1, 1))
 }
 
