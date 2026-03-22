@@ -79,6 +79,7 @@ pub enum Modal {
     CopilotLogin,
     CreateRepo(CreateRepoStep),
     CreatePr,
+    Message,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -519,6 +520,9 @@ impl AppState {
             self.merge_confirm_branch = None;
             return;
         }
+        if self.modal == Modal::Message {
+            self.message = None;
+        }
         self.modal = Modal::None;
         self.branch_name_input.clear();
         self.branch_filter.clear();
@@ -610,6 +614,14 @@ impl AppState {
             level: MessageLevel::Error,
             text: message.into(),
         });
+    }
+
+    pub fn set_message_popup(&mut self, level: MessageLevel, message: impl Into<String>) {
+        self.message = Some(FlashMessage {
+            level,
+            text: message.into(),
+        });
+        self.modal = Modal::Message;
     }
 
     pub fn start_job(&mut self, kind: JobKind) -> JobId {
