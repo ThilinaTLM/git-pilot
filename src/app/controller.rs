@@ -95,7 +95,7 @@ impl AppController {
             match result {
                 BackgroundResult::BranchNameGenerated(job_id, Ok(name)) => {
                     self.state.finish_job(job_id);
-                    self.state.branch_name_input = name;
+                    self.state.branch_name_input.set_content(name);
                 }
                 BackgroundResult::BranchNameGenerated(job_id, Err(e)) => {
                     self.state.finish_job(job_id);
@@ -108,7 +108,7 @@ impl AppController {
                         text.push('\n');
                         text.push_str(&body);
                     }
-                    self.state.commit_message_input = text;
+                    self.state.commit_message_input.set_content(text);
                 }
                 BackgroundResult::CommitMessageGenerated(job_id, Err(e)) => {
                     self.state.finish_job(job_id);
@@ -298,7 +298,15 @@ impl AppController {
             AppAction::ToggleHelp => self.state.show_help = !self.state.show_help,
             AppAction::InsertChar(ch) => self.insert_char(ch),
             AppAction::Backspace => self.backspace(),
+            AppAction::Delete => self.delete_char(),
             AppAction::InsertNewline => self.insert_newline(),
+            AppAction::CursorLeft => self.cursor_move(|ti| ti.move_left()),
+            AppAction::CursorRight => self.cursor_move(|ti| ti.move_right()),
+            AppAction::CursorHome => self.cursor_move(|ti| ti.move_home()),
+            AppAction::CursorEnd => self.cursor_move(|ti| ti.move_end()),
+            AppAction::CursorWordLeft => self.cursor_move(|ti| ti.move_word_left()),
+            AppAction::CursorWordRight => self.cursor_move(|ti| ti.move_word_right()),
+            AppAction::DeleteWordBack => self.cursor_move(|ti| ti.delete_word_back()),
             AppAction::ScrollDiffDown => {
                 self.state.diff_scroll = self.state.diff_scroll.saturating_add(5);
             }
@@ -522,8 +530,12 @@ impl AppController {
             .unwrap_or_default();
         self.state.create_repo_state = Some(crate::app::state::CreateRepoState {
             step: crate::app::state::CreateRepoStep::Owner,
-            owner_input: String::new(),
-            repo_name_input: default_name,
+            owner_input: crate::shared::text_input::TextInput::new(),
+            repo_name_input: {
+                let mut input = crate::shared::text_input::TextInput::new();
+                input.set_content(default_name);
+                input
+            },
             is_public: true,
         });
         self.state.modal = Modal::CreateRepo(crate::app::state::CreateRepoStep::Owner);
@@ -536,13 +548,13 @@ impl AppController {
         };
         let next_step = match rs.step {
             crate::app::state::CreateRepoStep::Owner => {
-                if rs.owner_input.trim().is_empty() {
+                if rs.owner_input.content().trim().is_empty() {
                     return Err(anyhow!("owner cannot be empty"));
                 }
                 crate::app::state::CreateRepoStep::RepoName
             }
             crate::app::state::CreateRepoStep::RepoName => {
-                if rs.repo_name_input.trim().is_empty() {
+                if rs.repo_name_input.content().trim().is_empty() {
                     return Err(anyhow!("repository name cannot be empty"));
                 }
                 crate::app::state::CreateRepoStep::Visibility
@@ -603,8 +615,8 @@ impl AppController {
             .ok_or_else(|| anyhow!("no repository selected"))?;
 
         let params = crate::domain::remote::CreateRepoParams {
-            owner: rs.owner_input.trim().to_string(),
-            name: rs.repo_name_input.trim().to_string(),
+            owner: rs.owner_input.content().trim().to_string(),
+            name: rs.repo_name_input.content().trim().to_string(),
             visibility: if rs.is_public {
                 crate::domain::remote::RepoVisibility::Public
             } else {
@@ -1044,7 +1056,7 @@ impl AppController {
             .state
             .selected_repo_path()
             .ok_or_else(|| anyhow!("no repository selected"))?;
-        let branch = BranchName::try_from(self.state.branch_name_input.clone())?;
+        let branch = BranchName::try_from(self.state.branch_name_input.content().to_string())?;
         self.git.create_branch(&repo_path, &branch)?;
         self.reload_selected_repo()?;
         self.state.close_modal();
@@ -1063,7 +1075,7 @@ impl AppController {
             return Err(anyhow!("no previous commit to amend"));
         }
         self.state.amend_mode = true;
-        self.state.commit_message_input = last_message;
+        self.state.commit_message_input.set_content(last_message);
         self.state.modal = Modal::Commit;
         Ok(())
     }
@@ -1080,7 +1092,8 @@ impl AppController {
             return Err(anyhow!("no staged changes to commit"));
         }
 
-        let message = CommitMessage::try_from(self.state.commit_message_input.clone())?;
+        let message =
+            CommitMessage::try_from(self.state.commit_message_input.content().to_string())?;
         if amend {
             self.git.amend_commit(&repo.summary.path, &message)?;
         } else {
@@ -1093,76 +1106,84 @@ impl AppController {
         Ok(())
     }
 
-    fn insert_char(&mut self, ch: char) {
+    /// Returns a mutable reference to the active text input for the current modal, if any.
+    fn active_input(&mut self) -> Option<&mut crate::shared::text_input::TextInput> {
         match &self.state.modal {
-            Modal::BranchCreate => {
-                let ch = if ch == ' ' { '-' } else { ch };
-                self.state.branch_name_input.push(ch);
-            }
-            Modal::Commit => self.state.commit_message_input.push(ch),
+            Modal::BranchCreate => Some(&mut self.state.branch_name_input),
+            Modal::Commit => Some(&mut self.state.commit_message_input),
             Modal::CreateRepo(step) => match step {
-                crate::app::state::CreateRepoStep::Owner => {
-                    if let Some(ref mut rs) = self.state.create_repo_state {
-                        rs.owner_input.push(ch);
-                    }
-                }
-                crate::app::state::CreateRepoStep::RepoName => {
-                    if let Some(ref mut rs) = self.state.create_repo_state {
-                        rs.repo_name_input.push(ch);
-                    }
-                }
-                _ => {}
+                crate::app::state::CreateRepoStep::Owner => self
+                    .state
+                    .create_repo_state
+                    .as_mut()
+                    .map(|rs| &mut rs.owner_input),
+                crate::app::state::CreateRepoStep::RepoName => self
+                    .state
+                    .create_repo_state
+                    .as_mut()
+                    .map(|rs| &mut rs.repo_name_input),
+                _ => None,
             },
             Modal::Branches if self.state.branch_filter_active => {
-                self.state.branch_filter.push(ch);
-                self.state.recompute_branch_filter();
+                Some(&mut self.state.branch_filter)
             }
-            Modal::None
-            | Modal::CopilotLogin
-            | Modal::Branches
-            | Modal::MergeConfirm
-            | Modal::CommitLog
-            | Modal::Settings => {}
+            _ => None,
+        }
+    }
+
+    fn insert_char(&mut self, ch: char) {
+        let is_branch_create = matches!(self.state.modal, Modal::BranchCreate);
+        let is_filter =
+            matches!(self.state.modal, Modal::Branches) && self.state.branch_filter_active;
+        let ch = if is_branch_create && ch == ' ' {
+            '-'
+        } else {
+            ch
+        };
+        if let Some(input) = self.active_input() {
+            input.insert_char(ch);
+        }
+        if is_filter {
+            self.state.recompute_branch_filter();
         }
     }
 
     fn backspace(&mut self) {
-        match &self.state.modal {
-            Modal::BranchCreate => {
-                self.state.branch_name_input.pop();
-            }
-            Modal::Commit => {
-                self.state.commit_message_input.pop();
-            }
-            Modal::CreateRepo(step) => match step {
-                crate::app::state::CreateRepoStep::Owner => {
-                    if let Some(ref mut rs) = self.state.create_repo_state {
-                        rs.owner_input.pop();
-                    }
-                }
-                crate::app::state::CreateRepoStep::RepoName => {
-                    if let Some(ref mut rs) = self.state.create_repo_state {
-                        rs.repo_name_input.pop();
-                    }
-                }
-                _ => {}
-            },
-            Modal::Branches if self.state.branch_filter_active => {
-                self.state.branch_filter.pop();
-                self.state.recompute_branch_filter();
-            }
-            Modal::None
-            | Modal::CopilotLogin
-            | Modal::Branches
-            | Modal::MergeConfirm
-            | Modal::CommitLog
-            | Modal::Settings => {}
+        let is_filter =
+            matches!(self.state.modal, Modal::Branches) && self.state.branch_filter_active;
+        if let Some(input) = self.active_input() {
+            input.backspace();
+        }
+        if is_filter {
+            self.state.recompute_branch_filter();
+        }
+    }
+
+    fn delete_char(&mut self) {
+        let is_filter =
+            matches!(self.state.modal, Modal::Branches) && self.state.branch_filter_active;
+        if let Some(input) = self.active_input() {
+            input.delete();
+        }
+        if is_filter {
+            self.state.recompute_branch_filter();
         }
     }
 
     fn insert_newline(&mut self) {
         if matches!(self.state.modal, Modal::Commit) {
-            self.state.commit_message_input.push('\n');
+            self.state.commit_message_input.insert_char('\n');
+        }
+    }
+
+    fn cursor_move(&mut self, f: impl FnOnce(&mut crate::shared::text_input::TextInput)) {
+        let is_filter =
+            matches!(self.state.modal, Modal::Branches) && self.state.branch_filter_active;
+        if let Some(input) = self.active_input() {
+            f(input);
+        }
+        if is_filter {
+            self.state.recompute_branch_filter();
         }
     }
 

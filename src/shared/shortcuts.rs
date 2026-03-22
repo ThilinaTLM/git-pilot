@@ -17,11 +17,11 @@ pub const GLOBAL_SHORTCUTS: &[ShortcutEntry] = &[
         description: "refresh repositories and status",
     },
     ShortcutEntry {
-        keys: "Tab / Shift+Tab",
+        keys: "tab / shift+tab",
         description: "switch between repositories",
     },
     ShortcutEntry {
-        keys: "Left / Right",
+        keys: "left / right",
         description: "switch between views",
     },
     ShortcutEntry {
@@ -29,7 +29,7 @@ pub const GLOBAL_SHORTCUTS: &[ShortcutEntry] = &[
         description: "jump to Changes / PR",
     },
     ShortcutEntry {
-        keys: "Alt+1..9",
+        keys: "alt+1..9",
         description: "jump to repository by position",
     },
     ShortcutEntry {
@@ -40,15 +40,15 @@ pub const GLOBAL_SHORTCUTS: &[ShortcutEntry] = &[
 
 pub const CHANGES_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
-        keys: "Down / j",
+        keys: "down / j",
         description: "select next changed file",
     },
     ShortcutEntry {
-        keys: "Up / k",
+        keys: "up / k",
         description: "select previous changed file",
     },
     ShortcutEntry {
-        keys: "Space",
+        keys: "space",
         description: "toggle stage/unstage selected file",
     },
     ShortcutEntry {
@@ -92,26 +92,26 @@ pub const CHANGES_SHORTCUTS: &[ShortcutEntry] = &[
         description: "create a GitHub repository",
     },
     ShortcutEntry {
-        keys: "PageDown / Ctrl+d",
+        keys: "pagedown / ctrl+d",
         description: "scroll diff preview down",
     },
     ShortcutEntry {
-        keys: "PageUp / Ctrl+u",
+        keys: "pageup / ctrl+u",
         description: "scroll diff preview up",
     },
 ];
 
 pub const PR_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
-        keys: "Down / j",
+        keys: "down / j",
         description: "select next pull request",
     },
     ShortcutEntry {
-        keys: "Up / k",
+        keys: "up / k",
         description: "select previous pull request",
     },
     ShortcutEntry {
-        keys: "Enter",
+        keys: "enter",
         description: "open PR in browser",
     },
     ShortcutEntry {
@@ -119,38 +119,38 @@ pub const PR_SHORTCUTS: &[ShortcutEntry] = &[
         description: "refresh pull requests",
     },
     ShortcutEntry {
-        keys: "PageDown / Ctrl+d",
+        keys: "pagedown / ctrl+d",
         description: "scroll PR detail down",
     },
     ShortcutEntry {
-        keys: "PageUp / Ctrl+u",
+        keys: "pageup / ctrl+u",
         description: "scroll PR detail up",
     },
 ];
 
 pub const MODAL_SHORTCUTS: &[ShortcutEntry] = &[
     ShortcutEntry {
-        keys: "Enter",
+        keys: "enter",
         description: "confirm active modal or submit input",
     },
     ShortcutEntry {
-        keys: "Esc",
+        keys: "esc",
         description: "close active modal",
     },
     ShortcutEntry {
-        keys: "Backspace",
+        keys: "backspace",
         description: "delete last character in text inputs",
     },
     ShortcutEntry {
-        keys: "Ctrl+n",
+        keys: "ctrl+n",
         description: "insert newline in the commit editor",
     },
     ShortcutEntry {
-        keys: "Ctrl+g",
+        keys: "ctrl+g",
         description: "generate commit message with AI",
     },
     ShortcutEntry {
-        keys: "Ctrl+l",
+        keys: "ctrl+l",
         description: "login to GitHub Copilot",
     },
 ];

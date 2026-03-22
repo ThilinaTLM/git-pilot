@@ -2,6 +2,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Clear, Paragraph};
 
 use crate::app::state::{AppState, CreateRepoStep};
+use crate::shared::text_input::TextInput;
 use crate::ui::layout::centered_rect;
 use crate::ui::theme;
 
@@ -29,25 +30,51 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     match rs.step {
         CreateRepoStep::Owner => render_owner_step(frame, inner, &rs.owner_input),
         CreateRepoStep::RepoName => {
-            render_repo_name_step(frame, inner, &rs.owner_input, &rs.repo_name_input)
+            render_repo_name_step(frame, inner, rs.owner_input.content(), &rs.repo_name_input)
         }
         CreateRepoStep::Visibility => render_visibility_step(frame, inner, rs.is_public),
         CreateRepoStep::Confirm => render_confirm_step(frame, inner, rs),
     }
 }
 
-fn render_owner_step(frame: &mut Frame, area: Rect, owner: &str) {
+fn render_input_with_cursor(input: &TextInput) -> Vec<Span<'static>> {
+    let text_style = theme::modal_text_style();
+    let cursor_style = Style::default()
+        .fg(Color::Rgb(15, 23, 42))
+        .bg(Color::Rgb(34, 211, 238));
+
+    if input.is_empty() {
+        return vec![Span::styled(" ", cursor_style)];
+    }
+
+    let (before, after) = input.split_at_cursor();
+    let mut spans = Vec::new();
+    if !before.is_empty() {
+        spans.push(Span::styled(before.to_string(), text_style));
+    }
+    if let Some(ch) = after.chars().next() {
+        spans.push(Span::styled(ch.to_string(), cursor_style));
+        let rest = &after[ch.len_utf8()..];
+        if !rest.is_empty() {
+            spans.push(Span::styled(rest.to_string(), text_style));
+        }
+    } else {
+        spans.push(Span::styled(" ", cursor_style));
+    }
+    spans
+}
+
+fn render_owner_step(frame: &mut Frame, area: Rect, owner: &TextInput) {
+    let mut input_spans = vec![Span::styled("> ", theme::modal_accent_style())];
+    input_spans.extend(render_input_with_cursor(owner));
+
     let lines = vec![
         Line::from(Span::styled(
             "GitHub username or organization:",
             theme::modal_text_style(),
         )),
         Line::default(),
-        Line::from(vec![
-            Span::styled("> ", theme::modal_accent_style()),
-            Span::styled(owner, theme::modal_text_style()),
-            Span::styled("█", theme::modal_accent_style()),
-        ]),
+        Line::from(input_spans),
         Line::default(),
         Line::default(),
         shortcut_line(&[("Enter", "next"), ("Esc", "cancel")]),
@@ -57,20 +84,19 @@ fn render_owner_step(frame: &mut Frame, area: Rect, owner: &str) {
     frame.render_widget(paragraph, area);
 }
 
-fn render_repo_name_step(frame: &mut Frame, area: Rect, owner: &str, name: &str) {
+fn render_repo_name_step(frame: &mut Frame, area: Rect, owner: &str, name: &TextInput) {
+    let mut input_spans = vec![Span::styled("> ", theme::modal_accent_style())];
+    input_spans.extend(render_input_with_cursor(name));
+
     let lines = vec![
         Line::from(Span::styled("Repository name:", theme::modal_text_style())),
         Line::default(),
-        Line::from(vec![
-            Span::styled("> ", theme::modal_accent_style()),
-            Span::styled(name, theme::modal_text_style()),
-            Span::styled("█", theme::modal_accent_style()),
-        ]),
+        Line::from(input_spans),
         Line::default(),
         Line::from(vec![
             Span::styled("Preview: ", theme::modal_muted_style()),
             Span::styled(
-                format!("github.com/{owner}/{name}"),
+                format!("github.com/{owner}/{}", name.content()),
                 theme::modal_accent_style(),
             ),
         ]),
@@ -152,7 +178,11 @@ fn render_confirm_step(frame: &mut Frame, area: Rect, rs: &crate::app::state::Cr
         Line::from(vec![
             Span::styled("  Repository: ", theme::modal_muted_style()),
             Span::styled(
-                format!("{}/{}", rs.owner_input, rs.repo_name_input),
+                format!(
+                    "{}/{}",
+                    rs.owner_input.content(),
+                    rs.repo_name_input.content()
+                ),
                 theme::modal_accent_style(),
             ),
         ]),
@@ -165,7 +195,8 @@ fn render_confirm_step(frame: &mut Frame, area: Rect, rs: &crate::app::state::Cr
         Line::from(Span::styled(
             format!(
                 "  gh repo create {}/{} --{visibility} --source=. --remote=origin",
-                rs.owner_input, rs.repo_name_input
+                rs.owner_input.content(),
+                rs.repo_name_input.content()
             ),
             theme::modal_muted_style(),
         )),

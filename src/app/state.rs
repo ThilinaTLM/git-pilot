@@ -8,6 +8,7 @@ use crate::domain::remote::TrackingStatus;
 use crate::domain::repo::{RepositoryDetails, RepositorySummary};
 use crate::domain::settings::AppSettings;
 use crate::domain::status::{ChangedFile, FileSection};
+use crate::shared::text_input::TextInput;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum View {
@@ -45,8 +46,8 @@ pub enum CreateRepoStep {
 #[derive(Clone, Debug)]
 pub struct CreateRepoState {
     pub step: CreateRepoStep,
-    pub owner_input: String,
-    pub repo_name_input: String,
+    pub owner_input: TextInput,
+    pub repo_name_input: TextInput,
     pub is_public: bool,
 }
 
@@ -197,8 +198,8 @@ pub struct AppState {
     pub log_scroll: u16,
     pub active_view: View,
     pub modal: Modal,
-    pub branch_name_input: String,
-    pub commit_message_input: String,
+    pub branch_name_input: TextInput,
+    pub commit_message_input: TextInput,
     pub message: Option<FlashMessage>,
     pub show_help: bool,
     pub should_quit: bool,
@@ -213,7 +214,7 @@ pub struct AppState {
     pub pr_checks_cache: Vec<PrCheckInfo>,
     pub amend_mode: bool,
     pub branch_tracking: Option<TrackingStatus>,
-    pub branch_filter: String,
+    pub branch_filter: TextInput,
     pub branch_filter_active: bool,
     pub filtered_branches: Vec<usize>,
     pub merge_confirm_branch: Option<String>,
@@ -235,8 +236,8 @@ impl Default for AppState {
             log_scroll: 0,
             active_view: View::default(),
             modal: Modal::None,
-            branch_name_input: String::new(),
-            commit_message_input: String::new(),
+            branch_name_input: TextInput::new(),
+            commit_message_input: TextInput::new(),
             message: None,
             show_help: false,
             should_quit: false,
@@ -251,7 +252,7 @@ impl Default for AppState {
             pr_checks_cache: Vec::new(),
             amend_mode: false,
             branch_tracking: None,
-            branch_filter: String::new(),
+            branch_filter: TextInput::new(),
             branch_filter_active: false,
             filtered_branches: Vec::new(),
             merge_confirm_branch: None,
@@ -550,10 +551,10 @@ impl AppState {
             }
         };
 
-        if self.branch_filter.is_empty() {
+        if self.branch_filter.content().is_empty() {
             self.filtered_branches = (0..branches.len()).collect();
         } else {
-            let filter = self.branch_filter.to_lowercase();
+            let filter = self.branch_filter.content().to_lowercase();
             self.filtered_branches = branches
                 .iter()
                 .enumerate()

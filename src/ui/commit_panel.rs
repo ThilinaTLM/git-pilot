@@ -68,8 +68,23 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     frame.render_widget(Paragraph::new(desc), layout[0]);
 
     // Parse subject and body from input
-    let input = &state.commit_message_input;
-    let (subject, body) = split_subject_body(input);
+    let content = state.commit_message_input.content();
+    let cursor_pos = state.commit_message_input.cursor();
+    let (subject, body) = split_subject_body(content);
+
+    // Determine if cursor is in subject or body
+    let newline_pos = content.find('\n');
+    let cursor_in_subject = newline_pos.is_none() || cursor_pos <= newline_pos.unwrap();
+
+    let text_style = Style::default()
+        .fg(Color::Rgb(226, 232, 240))
+        .bg(Color::Rgb(15, 23, 42));
+    let cursor_style = Style::default()
+        .fg(Color::Rgb(15, 23, 42))
+        .bg(Color::Rgb(34, 211, 238));
+    let placeholder_style = Style::default()
+        .fg(Color::Rgb(71, 85, 105))
+        .bg(Color::Rgb(15, 23, 42));
 
     // Subject input field
     let subject_label = if state.ai_loading() {
@@ -79,7 +94,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     } else {
         "Subject"
     };
-    let subject_block = if body.is_none() {
+    let subject_block = if cursor_in_subject {
         theme::input_block_focused(subject_label)
     } else {
         theme::input_block(subject_label)
@@ -94,12 +109,15 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 .fg(Color::Rgb(34, 211, 238))
                 .bg(Color::Rgb(15, 23, 42)),
         ))
+    } else if subject.is_empty() && cursor_in_subject {
+        Line::from(vec![
+            Span::styled(" ", cursor_style),
+            Span::styled("Write a short summary of changes...", placeholder_style),
+        ])
     } else if subject.is_empty() {
         Line::from(Span::styled(
             "Write a short summary of changes...",
-            Style::default()
-                .fg(Color::Rgb(71, 85, 105))
-                .bg(Color::Rgb(15, 23, 42)),
+            placeholder_style,
         ))
     } else {
         let char_count = subject.len();
@@ -108,31 +126,22 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         } else if char_count > 50 {
             theme::warning_text_style()
         } else {
-            Style::default()
-                .fg(Color::Rgb(71, 85, 105))
-                .bg(Color::Rgb(15, 23, 42))
+            placeholder_style
         };
-        Line::from(vec![
-            Span::styled(
-                subject.to_string(),
-                Style::default()
-                    .fg(Color::Rgb(226, 232, 240))
-                    .bg(Color::Rgb(15, 23, 42)),
-            ),
-            Span::styled(
-                if body.is_none() { "_" } else { "" },
-                Style::default()
-                    .fg(Color::Rgb(34, 211, 238))
-                    .bg(Color::Rgb(15, 23, 42)),
-            ),
-            Span::styled("  ", count_style),
-            Span::styled(format!("{char_count}/72"), count_style),
-        ])
+
+        let mut spans = if cursor_in_subject {
+            render_with_cursor(subject, cursor_pos, text_style, cursor_style)
+        } else {
+            vec![Span::styled(subject.to_string(), text_style)]
+        };
+        spans.push(Span::styled("  ", count_style));
+        spans.push(Span::styled(format!("{char_count}/72"), count_style));
+        Line::from(spans)
     };
     frame.render_widget(Paragraph::new(subject_display), subject_inner);
 
     // Body input field
-    let body_block = if body.is_some() {
+    let body_block = if !cursor_in_subject {
         theme::input_block_focused("Body (optional)")
     } else {
         theme::input_block("Body (optional)")
@@ -142,40 +151,29 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let body_text = body.unwrap_or("");
     let body_display = if body_text.is_empty() && body.is_some() {
-        Text::from(Line::from(Span::styled(
-            "Add a detailed description..._",
-            Style::default()
-                .fg(Color::Rgb(71, 85, 105))
-                .bg(Color::Rgb(15, 23, 42)),
-        )))
+        if !cursor_in_subject {
+            Text::from(Line::from(vec![
+                Span::styled(" ", cursor_style),
+                Span::styled("Add a detailed description...", placeholder_style),
+            ]))
+        } else {
+            Text::from(Line::from(Span::styled(
+                "Add a detailed description...",
+                placeholder_style,
+            )))
+        }
     } else if body_text.is_empty() {
         Text::from(Line::from(Span::styled(
-            "Ctrl+n to add body",
-            Style::default()
-                .fg(Color::Rgb(71, 85, 105))
-                .bg(Color::Rgb(15, 23, 42)),
+            "ctrl+n to add body",
+            placeholder_style,
         )))
     } else {
-        let mut lines: Vec<Line> = body_text
-            .lines()
-            .map(|l| {
-                Line::from(Span::styled(
-                    l.to_string(),
-                    Style::default()
-                        .fg(Color::Rgb(226, 232, 240))
-                        .bg(Color::Rgb(15, 23, 42)),
-                ))
-            })
-            .collect();
-        // Cursor on the last line
-        if let Some(last) = lines.last_mut() {
-            last.spans.push(Span::styled(
-                "_",
-                Style::default()
-                    .fg(Color::Rgb(34, 211, 238))
-                    .bg(Color::Rgb(15, 23, 42)),
-            ));
-        }
+        let body_cursor = if !cursor_in_subject {
+            cursor_pos - newline_pos.unwrap() - 1
+        } else {
+            usize::MAX
+        };
+        let lines = render_multiline_with_cursor(body_text, body_cursor, text_style, cursor_style);
         Text::from(lines)
     };
     frame.render_widget(
@@ -186,24 +184,24 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     // Shortcut bar at bottom
     let ai_shortcut = if state.copilot_authenticated {
         vec![
-            Span::styled("  Ctrl+g ", theme::modal_accent_style()),
+            Span::styled("  ctrl+g ", theme::modal_accent_style()),
             Span::styled("generate", theme::modal_muted_style()),
         ]
     } else {
         vec![
-            Span::styled("  Ctrl+l ", theme::modal_accent_style()),
+            Span::styled("  ctrl+l ", theme::modal_accent_style()),
             Span::styled("login", theme::modal_muted_style()),
         ]
     };
     let mut shortcut_spans = vec![
-        Span::styled("Enter ", theme::modal_accent_style()),
+        Span::styled("enter ", theme::modal_accent_style()),
         Span::styled("commit", theme::modal_muted_style()),
-        Span::styled("  Ctrl+n ", theme::modal_accent_style()),
+        Span::styled("  ctrl+n ", theme::modal_accent_style()),
         Span::styled("newline", theme::modal_muted_style()),
     ];
     shortcut_spans.extend(ai_shortcut);
     shortcut_spans.extend(vec![
-        Span::styled("  Esc ", theme::modal_accent_style()),
+        Span::styled("  esc ", theme::modal_accent_style()),
         Span::styled("cancel", theme::modal_muted_style()),
     ]);
     let shortcuts = Line::from(shortcut_spans);
@@ -220,4 +218,68 @@ fn split_subject_body(input: &str) -> (&str, Option<&str>) {
     } else {
         (input, None)
     }
+}
+
+/// Render a single-line text with a cursor block at the given byte position.
+fn render_with_cursor<'a>(
+    text: &str,
+    cursor: usize,
+    text_style: Style,
+    cursor_style: Style,
+) -> Vec<Span<'a>> {
+    let cursor = cursor.min(text.len());
+    let before = &text[..cursor];
+    let after = &text[cursor..];
+
+    let mut spans = Vec::new();
+    if !before.is_empty() {
+        spans.push(Span::styled(before.to_string(), text_style));
+    }
+
+    // Cursor character (show the char under cursor, or a space if at end)
+    if let Some(ch) = after.chars().next() {
+        spans.push(Span::styled(ch.to_string(), cursor_style));
+        let rest = &after[ch.len_utf8()..];
+        if !rest.is_empty() {
+            spans.push(Span::styled(rest.to_string(), text_style));
+        }
+    } else {
+        spans.push(Span::styled(" ", cursor_style));
+    }
+
+    spans
+}
+
+/// Render multi-line text with a cursor at a byte position within the text.
+fn render_multiline_with_cursor<'a>(
+    text: &str,
+    cursor: usize,
+    text_style: Style,
+    cursor_style: Style,
+) -> Vec<Line<'a>> {
+    let mut lines = Vec::new();
+    let mut offset = 0;
+
+    for line_text in text.split('\n') {
+        let line_end = offset + line_text.len();
+        if cursor >= offset && cursor <= line_end && cursor != usize::MAX {
+            let local_cursor = cursor - offset;
+            let spans = render_with_cursor(line_text, local_cursor, text_style, cursor_style);
+            lines.push(Line::from(spans));
+        } else {
+            lines.push(Line::from(Span::styled(line_text.to_string(), text_style)));
+        }
+        offset = line_end + 1; // +1 for the '\n'
+    }
+
+    // Handle cursor at very end after trailing newline
+    if cursor == text.len() && text.ends_with('\n') {
+        lines.push(Line::from(Span::styled(" ", cursor_style)));
+    }
+
+    if lines.is_empty() {
+        lines.push(Line::from(Span::styled(" ", cursor_style)));
+    }
+
+    lines
 }

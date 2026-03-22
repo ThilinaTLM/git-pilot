@@ -40,7 +40,15 @@ pub enum AppAction {
     ToggleHelp,
     InsertChar(char),
     Backspace,
+    Delete,
     InsertNewline,
+    CursorLeft,
+    CursorRight,
+    CursorHome,
+    CursorEnd,
+    CursorWordLeft,
+    CursorWordRight,
+    DeleteWordBack,
     ScrollDiffDown,
     ScrollDiffUp,
     SwitchView(View),
@@ -163,15 +171,26 @@ fn map_changes_key(key_event: KeyEvent) -> AppAction {
 
 fn map_branches_modal_key(key_event: KeyEvent, filter_active: bool) -> AppAction {
     if filter_active {
+        if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key_event.code {
+                KeyCode::Left => AppAction::CursorWordLeft,
+                KeyCode::Right => AppAction::CursorWordRight,
+                KeyCode::Char('w') | KeyCode::Backspace => AppAction::DeleteWordBack,
+                _ => AppAction::Noop,
+            };
+        }
         return match key_event.code {
             KeyCode::Esc => AppAction::DeactivateBranchFilter,
             KeyCode::Enter => AppAction::ConfirmModal,
             KeyCode::Down => AppAction::SelectNextBranch,
             KeyCode::Up => AppAction::SelectPreviousBranch,
             KeyCode::Backspace => AppAction::Backspace,
-            KeyCode::Char(ch) if !key_event.modifiers.contains(KeyModifiers::CONTROL) => {
-                AppAction::InsertChar(ch)
-            }
+            KeyCode::Delete => AppAction::Delete,
+            KeyCode::Left => AppAction::CursorLeft,
+            KeyCode::Right => AppAction::CursorRight,
+            KeyCode::Home => AppAction::CursorHome,
+            KeyCode::End => AppAction::CursorEnd,
+            KeyCode::Char(ch) => AppAction::InsertChar(ch),
             _ => AppAction::Noop,
         };
     }
@@ -253,15 +272,28 @@ fn map_pr_key(key_event: KeyEvent) -> AppAction {
 
 fn map_create_repo_key(step: &CreateRepoStep, key_event: KeyEvent) -> AppAction {
     match step {
-        CreateRepoStep::Owner | CreateRepoStep::RepoName => match key_event.code {
-            KeyCode::Esc => AppAction::CreateRepoPrevStep,
-            KeyCode::Enter => AppAction::CreateRepoNextStep,
-            KeyCode::Backspace => AppAction::Backspace,
-            KeyCode::Char(ch) if !key_event.modifiers.contains(KeyModifiers::CONTROL) => {
-                AppAction::InsertChar(ch)
+        CreateRepoStep::Owner | CreateRepoStep::RepoName => {
+            if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                return match key_event.code {
+                    KeyCode::Left => AppAction::CursorWordLeft,
+                    KeyCode::Right => AppAction::CursorWordRight,
+                    KeyCode::Char('w') | KeyCode::Backspace => AppAction::DeleteWordBack,
+                    _ => AppAction::Noop,
+                };
             }
-            _ => AppAction::Noop,
-        },
+            match key_event.code {
+                KeyCode::Esc => AppAction::CreateRepoPrevStep,
+                KeyCode::Enter => AppAction::CreateRepoNextStep,
+                KeyCode::Backspace => AppAction::Backspace,
+                KeyCode::Delete => AppAction::Delete,
+                KeyCode::Left => AppAction::CursorLeft,
+                KeyCode::Right => AppAction::CursorRight,
+                KeyCode::Home => AppAction::CursorHome,
+                KeyCode::End => AppAction::CursorEnd,
+                KeyCode::Char(ch) => AppAction::InsertChar(ch),
+                _ => AppAction::Noop,
+            }
+        }
         CreateRepoStep::Visibility => match key_event.code {
             KeyCode::Esc => AppAction::CreateRepoPrevStep,
             KeyCode::Enter => AppAction::CreateRepoNextStep,
@@ -284,6 +316,9 @@ fn map_commit_input_key(key_event: KeyEvent) -> AppAction {
             KeyCode::Char('n') => AppAction::InsertNewline,
             KeyCode::Char('g') => AppAction::GenerateCommitMessage,
             KeyCode::Char('l') => AppAction::CopilotLogin,
+            KeyCode::Left => AppAction::CursorWordLeft,
+            KeyCode::Right => AppAction::CursorWordRight,
+            KeyCode::Char('w') | KeyCode::Backspace => AppAction::DeleteWordBack,
             _ => AppAction::Noop,
         };
     }
@@ -292,6 +327,11 @@ fn map_commit_input_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Esc => AppAction::CloseModal,
         KeyCode::Enter => AppAction::ConfirmModal,
         KeyCode::Backspace => AppAction::Backspace,
+        KeyCode::Delete => AppAction::Delete,
+        KeyCode::Left => AppAction::CursorLeft,
+        KeyCode::Right => AppAction::CursorRight,
+        KeyCode::Home => AppAction::CursorHome,
+        KeyCode::End => AppAction::CursorEnd,
         KeyCode::Char(ch) => AppAction::InsertChar(ch),
         _ => AppAction::Noop,
     }
@@ -302,6 +342,9 @@ fn map_branch_create_key(key_event: KeyEvent) -> AppAction {
         return match key_event.code {
             KeyCode::Char('g') => AppAction::GenerateBranchName,
             KeyCode::Char('l') => AppAction::CopilotLogin,
+            KeyCode::Left => AppAction::CursorWordLeft,
+            KeyCode::Right => AppAction::CursorWordRight,
+            KeyCode::Char('w') | KeyCode::Backspace => AppAction::DeleteWordBack,
             _ => AppAction::Noop,
         };
     }
@@ -310,6 +353,11 @@ fn map_branch_create_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Esc => AppAction::CloseModal,
         KeyCode::Enter => AppAction::ConfirmModal,
         KeyCode::Backspace => AppAction::Backspace,
+        KeyCode::Delete => AppAction::Delete,
+        KeyCode::Left => AppAction::CursorLeft,
+        KeyCode::Right => AppAction::CursorRight,
+        KeyCode::Home => AppAction::CursorHome,
+        KeyCode::End => AppAction::CursorEnd,
         KeyCode::Char(ch) => AppAction::InsertChar(ch),
         _ => AppAction::Noop,
     }

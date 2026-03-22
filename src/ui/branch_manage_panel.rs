@@ -136,28 +136,37 @@ fn render_filter(frame: &mut Frame, area: Rect, state: &AppState) {
     let filter_inner = filter_block.inner(area);
     frame.render_widget(filter_block, area);
 
+    let text_style = Style::default()
+        .fg(Color::Rgb(226, 232, 240))
+        .bg(Color::Rgb(15, 23, 42));
+    let cursor_style = Style::default()
+        .fg(Color::Rgb(15, 23, 42))
+        .bg(Color::Rgb(34, 211, 238));
+    let placeholder_style = Style::default()
+        .fg(Color::Rgb(71, 85, 105))
+        .bg(Color::Rgb(15, 23, 42));
+
     let filter_display = if state.branch_filter.is_empty() {
-        Line::from(Span::styled(
-            "type to filter...",
-            Style::default()
-                .fg(Color::Rgb(71, 85, 105))
-                .bg(Color::Rgb(15, 23, 42)),
-        ))
-    } else {
         Line::from(vec![
-            Span::styled(
-                state.branch_filter.clone(),
-                Style::default()
-                    .fg(Color::Rgb(226, 232, 240))
-                    .bg(Color::Rgb(15, 23, 42)),
-            ),
-            Span::styled(
-                "_",
-                Style::default()
-                    .fg(Color::Rgb(34, 211, 238))
-                    .bg(Color::Rgb(15, 23, 42)),
-            ),
+            Span::styled(" ", cursor_style),
+            Span::styled("type to filter...", placeholder_style),
         ])
+    } else {
+        let (before, after) = state.branch_filter.split_at_cursor();
+        let mut spans = Vec::new();
+        if !before.is_empty() {
+            spans.push(Span::styled(before.to_string(), text_style));
+        }
+        if let Some(ch) = after.chars().next() {
+            spans.push(Span::styled(ch.to_string(), cursor_style));
+            let rest = &after[ch.len_utf8()..];
+            if !rest.is_empty() {
+                spans.push(Span::styled(rest.to_string(), text_style));
+            }
+        } else {
+            spans.push(Span::styled(" ", cursor_style));
+        }
+        Line::from(spans)
     };
     frame.render_widget(Paragraph::new(filter_display), filter_inner);
 }
@@ -233,7 +242,7 @@ fn render_shortcuts(frame: &mut Frame, area: Rect) {
             Span::styled("pull", theme::modal_muted_style()),
             Span::styled("  / ", theme::modal_accent_style()),
             Span::styled("filter", theme::modal_muted_style()),
-            Span::styled("  Esc ", theme::modal_accent_style()),
+            Span::styled("  esc ", theme::modal_accent_style()),
             Span::styled("close", theme::modal_muted_style()),
         ]),
     ];

@@ -62,7 +62,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     frame.render_widget(waiting, layout[7]);
 
     let shortcuts = Line::from(vec![
-        Span::styled("Esc ", theme::modal_accent_style()),
+        Span::styled("esc ", theme::modal_accent_style()),
         Span::styled("cancel", theme::modal_muted_style()),
     ]);
     frame.render_widget(Paragraph::new(shortcuts), layout[9]);

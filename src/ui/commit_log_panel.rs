@@ -92,7 +92,7 @@ fn render_commit_detail(frame: &mut Frame, area: Rect, state: &AppState) {
 
     lines.push(Line::default());
     lines.push(Line::from(vec![
-        Span::styled("Esc ", theme::modal_accent_style()),
+        Span::styled("esc ", theme::modal_accent_style()),
         Span::styled("close", theme::modal_muted_style()),
     ]));
 

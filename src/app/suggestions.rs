@@ -17,11 +17,11 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                             label: "navigate",
                         },
                         Suggestion {
-                            key_hint: "Enter",
+                            key_hint: "enter",
                             label: "switch",
                         },
                         Suggestion {
-                            key_hint: "Esc",
+                            key_hint: "esc",
                             label: "exit filter",
                         },
                     ];
@@ -29,7 +29,7 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                 let mut suggestions = Vec::new();
                 if state.selected_branch_name().is_some() {
                     suggestions.push(Suggestion {
-                        key_hint: "Enter",
+                        key_hint: "enter",
                         label: "switch",
                     });
                     suggestions.push(Suggestion {
@@ -50,18 +50,18 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                     label: "new branch",
                 });
                 suggestions.push(Suggestion {
-                    key_hint: "Esc",
+                    key_hint: "esc",
                     label: "close",
                 });
                 suggestions
             }
             Modal::BranchCreate => vec![
                 Suggestion {
-                    key_hint: "Enter",
+                    key_hint: "enter",
                     label: "create",
                 },
                 Suggestion {
-                    key_hint: "Esc",
+                    key_hint: "esc",
                     label: "cancel",
                 },
             ],
@@ -81,11 +81,11 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                     label: "navigate",
                 },
                 Suggestion {
-                    key_hint: "Ctrl+d/u",
+                    key_hint: "ctrl+d/u",
                     label: "scroll detail",
                 },
                 Suggestion {
-                    key_hint: "Esc",
+                    key_hint: "esc",
                     label: "close",
                 },
             ],
@@ -95,7 +95,7 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                     label: "navigate",
                 },
                 Suggestion {
-                    key_hint: "Space",
+                    key_hint: "space",
                     label: "toggle",
                 },
                 Suggestion {
@@ -103,26 +103,26 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                     label: "adjust",
                 },
                 Suggestion {
-                    key_hint: "Esc",
+                    key_hint: "esc",
                     label: "close",
                 },
             ],
             Modal::Commit => vec![
                 Suggestion {
-                    key_hint: "Enter",
+                    key_hint: "enter",
                     label: "commit",
                 },
                 Suggestion {
-                    key_hint: "Ctrl+n",
+                    key_hint: "ctrl+n",
                     label: "newline",
                 },
                 Suggestion {
-                    key_hint: "Esc",
+                    key_hint: "esc",
                     label: "cancel",
                 },
             ],
             Modal::CopilotLogin => vec![Suggestion {
-                key_hint: "Esc",
+                key_hint: "esc",
                 label: "cancel",
             }],
             Modal::CreateRepo(ref step) => compute_create_repo_suggestions(step),
@@ -157,7 +157,7 @@ fn compute_changes_suggestions(state: &AppState) -> Vec<Suggestion> {
 
     if has_unstaged {
         suggestions.push(Suggestion {
-            key_hint: "Space",
+            key_hint: "space",
             label: "stage",
         });
         suggestions.push(Suggestion {
@@ -217,7 +217,7 @@ fn compute_pr_suggestions(state: &AppState) -> Vec<Suggestion> {
             label: "navigate",
         });
         suggestions.push(Suggestion {
-            key_hint: "Enter",
+            key_hint: "enter",
             label: "open in browser",
         });
     }
@@ -238,35 +238,35 @@ fn compute_create_repo_suggestions(step: &CreateRepoStep) -> Vec<Suggestion> {
     match step {
         CreateRepoStep::Owner | CreateRepoStep::RepoName => vec![
             Suggestion {
-                key_hint: "Enter",
+                key_hint: "enter",
                 label: "next",
             },
             Suggestion {
-                key_hint: "Esc",
+                key_hint: "esc",
                 label: "back",
             },
         ],
         CreateRepoStep::Visibility => vec![
             Suggestion {
-                key_hint: "Space",
+                key_hint: "space",
                 label: "toggle",
             },
             Suggestion {
-                key_hint: "Enter",
+                key_hint: "enter",
                 label: "next",
             },
             Suggestion {
-                key_hint: "Esc",
+                key_hint: "esc",
                 label: "back",
             },
         ],
         CreateRepoStep::Confirm => vec![
             Suggestion {
-                key_hint: "Enter",
+                key_hint: "enter",
                 label: "create",
             },
             Suggestion {
-                key_hint: "Esc",
+                key_hint: "esc",
                 label: "back",
             },
         ],
