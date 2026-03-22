@@ -3,6 +3,7 @@ pub mod branch_panel;
 pub mod commit_log_panel;
 pub mod commit_panel;
 pub mod copilot_login_panel;
+pub mod create_pr_panel;
 pub mod create_repo_panel;
 pub mod diff_panel;
 pub mod help;

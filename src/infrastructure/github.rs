@@ -66,6 +66,48 @@ impl GhCliGitHubService {
         Ok(url)
     }
 
+    pub fn create_pr(&self, repo_path: &Path, params: &CreatePrParams) -> Result<PrInfo> {
+        let mut command = Command::new("gh");
+        command
+            .current_dir(repo_path)
+            .arg("pr")
+            .arg("create")
+            .arg("--title")
+            .arg(&params.title)
+            .arg("--body")
+            .arg(&params.body)
+            .arg("--base")
+            .arg(&params.base)
+            .arg("--head")
+            .arg(&params.head);
+
+        if params.draft {
+            command.arg("--draft");
+        }
+
+        command
+            .arg("--json")
+            .arg("number,title,state,url,headRefName");
+
+        let output = run_command(&mut command)?;
+        let raw = String::from_utf8_lossy(&output.stdout);
+        let pr: GhPrJson =
+            serde_json::from_str(&raw).map_err(|e| anyhow!("failed to parse PR output: {e}"))?;
+
+        Ok(PrInfo {
+            number: pr.number,
+            title: pr.title,
+            state: match pr.state.to_uppercase().as_str() {
+                "MERGED" => PrState::Merged,
+                "CLOSED" => PrState::Closed,
+                _ => PrState::Open,
+            },
+            url: pr.url,
+            head_branch: pr.head_ref_name,
+            checks_passed: None,
+        })
+    }
+
     pub fn pr_checks(&self, repo_path: &Path, pr_number: u32) -> Result<Vec<PrCheckInfo>> {
         let mut command = Command::new("gh");
         command

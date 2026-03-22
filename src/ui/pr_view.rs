@@ -45,6 +45,8 @@ fn render_pr_list(frame: &mut Frame, area: Rect, state: &AppState) {
             Line::default(),
             Line::from(vec![
                 Span::styled("Press ", theme::muted_text_style()),
+                Span::styled("n", theme::accent_text_style()),
+                Span::styled(" to create a PR, ", theme::muted_text_style()),
                 Span::styled("r", theme::accent_text_style()),
                 Span::styled(" to refresh", theme::muted_text_style()),
             ]),
@@ -161,6 +163,8 @@ fn render_pr_detail(frame: &mut Frame, area: Rect, state: &AppState) {
         Span::styled("open in browser", theme::muted_text_style()),
         Span::styled("  r ", theme::accent_text_style()),
         Span::styled("refresh", theme::muted_text_style()),
+        Span::styled("  n ", theme::accent_text_style()),
+        Span::styled("create", theme::muted_text_style()),
     ]));
 
     let paragraph = Paragraph::new(Text::from(lines))

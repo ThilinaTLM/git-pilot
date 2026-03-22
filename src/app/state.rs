@@ -52,6 +52,22 @@ pub struct CreateRepoState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CreatePrField {
+    Title,
+    Body,
+}
+
+#[derive(Clone, Debug)]
+pub struct CreatePrState {
+    pub title_input: TextInput,
+    pub body_input: TextInput,
+    pub base_branch: String,
+    pub head_branch: String,
+    pub draft: bool,
+    pub active_field: CreatePrField,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Modal {
     None,
     Branches,
@@ -62,6 +78,7 @@ pub enum Modal {
     Commit,
     CopilotLogin,
     CreateRepo(CreateRepoStep),
+    CreatePr,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -220,6 +237,7 @@ pub struct AppState {
     pub merge_confirm_branch: Option<String>,
     pub settings: AppSettings,
     pub selected_settings_item: usize,
+    pub create_pr_state: Option<CreatePrState>,
 }
 
 impl Default for AppState {
@@ -258,6 +276,7 @@ impl Default for AppState {
             merge_confirm_branch: None,
             settings: AppSettings::default(),
             selected_settings_item: 0,
+            create_pr_state: None,
         }
     }
 }
@@ -506,6 +525,7 @@ impl AppState {
         self.branch_filter_active = false;
         self.commit_message_input.clear();
         self.create_repo_state = None;
+        self.create_pr_state = None;
         self.merge_confirm_branch = None;
         self.amend_mode = false;
         self.recompute_branch_filter();
@@ -620,6 +640,10 @@ impl AppState {
 
     pub fn ai_branch_loading(&self) -> bool {
         self.is_job_running(&JobKind::AiBranchName)
+    }
+
+    pub fn ai_pr_loading(&self) -> bool {
+        self.is_job_running(&JobKind::AiPrDescription)
     }
 
     pub fn spinner_char(&self) -> char {

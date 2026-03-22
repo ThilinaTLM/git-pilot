@@ -126,6 +126,24 @@ pub fn compute_suggestions(state: &AppState) -> Vec<Suggestion> {
                 label: "cancel",
             }],
             Modal::CreateRepo(ref step) => compute_create_repo_suggestions(step),
+            Modal::CreatePr => vec![
+                Suggestion {
+                    key_hint: "enter",
+                    label: "create",
+                },
+                Suggestion {
+                    key_hint: "tab",
+                    label: "switch field",
+                },
+                Suggestion {
+                    key_hint: "ctrl+g",
+                    label: "generate",
+                },
+                Suggestion {
+                    key_hint: "esc",
+                    label: "cancel",
+                },
+            ],
             Modal::None => vec![],
         };
     }
@@ -222,6 +240,10 @@ fn compute_pr_suggestions(state: &AppState) -> Vec<Suggestion> {
         });
     }
 
+    suggestions.push(Suggestion {
+        key_hint: "n",
+        label: "create PR",
+    });
     suggestions.push(Suggestion {
         key_hint: "r",
         label: "refresh PRs",

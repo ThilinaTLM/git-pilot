@@ -9,7 +9,7 @@ use ratatui::layout::Rect;
 
 use crate::app::actions::{AppAction, map_key_event};
 use crate::app::background::{BackgroundResult, DeviceCodeInfo, JobKind, create_channel};
-use crate::app::state::{AppState, Modal, RepositoryState};
+use crate::app::state::{AppState, CreatePrField, CreatePrState, Modal, RepositoryState};
 use crate::domain::branch::BranchName;
 use crate::domain::commit::CommitMessage;
 use crate::domain::status::FileSection;
@@ -236,6 +236,33 @@ impl AppController {
                         }
                     }
                 }
+                BackgroundResult::PrDescriptionGenerated(job_id, Ok(desc)) => {
+                    self.state.finish_job(job_id);
+                    if let Some(ref mut pr_state) = self.state.create_pr_state {
+                        pr_state.title_input.set_content(desc.title);
+                        pr_state.body_input.set_content(desc.body);
+                    }
+                }
+                BackgroundResult::PrDescriptionGenerated(job_id, Err(e)) => {
+                    self.state.finish_job(job_id);
+                    self.state
+                        .set_error(format!("AI PR description failed: {e}"));
+                }
+                BackgroundResult::PrCreated(job_id, result) => {
+                    self.state.finish_job(job_id);
+                    match result {
+                        Ok(pr_info) => {
+                            let _ = self.reload_selected_repo();
+                            self.state.set_info(format!(
+                                "Created PR #{}: {}",
+                                pr_info.number, pr_info.title
+                            ));
+                        }
+                        Err(e) => {
+                            self.state.set_error(format!("Failed to create PR: {e}"));
+                        }
+                    }
+                }
             }
         }
     }
@@ -409,6 +436,21 @@ impl AppController {
                 self.state.branch_filter_active = false;
             }
             AppAction::ConfirmMerge => self.confirm_merge()?,
+            AppAction::OpenCreatePr => self.open_create_pr()?,
+            AppAction::GeneratePrDescription => self.generate_pr_description()?,
+            AppAction::TogglePrDraft => {
+                if let Some(ref mut pr_state) = self.state.create_pr_state {
+                    pr_state.draft = !pr_state.draft;
+                }
+            }
+            AppAction::SwitchPrField => {
+                if let Some(ref mut pr_state) = self.state.create_pr_state {
+                    pr_state.active_field = match pr_state.active_field {
+                        CreatePrField::Title => CreatePrField::Body,
+                        CreatePrField::Body => CreatePrField::Title,
+                    };
+                }
+            }
         }
 
         self.state.sync_selection();
@@ -1030,6 +1072,7 @@ impl AppController {
             Modal::Commit => self.confirm_commit(),
             Modal::CopilotLogin => Ok(()),
             Modal::CreateRepo(_) => self.confirm_create_repo(),
+            Modal::CreatePr => self.confirm_create_pr(),
         }
     }
 
@@ -1124,6 +1167,15 @@ impl AppController {
                     .map(|rs| &mut rs.repo_name_input),
                 _ => None,
             },
+            Modal::CreatePr => {
+                self.state
+                    .create_pr_state
+                    .as_mut()
+                    .map(|ps| match ps.active_field {
+                        CreatePrField::Title => &mut ps.title_input,
+                        CreatePrField::Body => &mut ps.body_input,
+                    })
+            }
             Modal::Branches if self.state.branch_filter_active => {
                 Some(&mut self.state.branch_filter)
             }
@@ -1174,6 +1226,18 @@ impl AppController {
         if matches!(self.state.modal, Modal::Commit) {
             self.state.commit_message_input.insert_char('\n');
         }
+        if matches!(self.state.modal, Modal::CreatePr)
+            && let Some(ref mut pr_state) = self.state.create_pr_state
+        {
+            match pr_state.active_field {
+                CreatePrField::Title => {
+                    pr_state.active_field = CreatePrField::Body;
+                }
+                CreatePrField::Body => {
+                    pr_state.body_input.insert_char('\n');
+                }
+            }
+        }
     }
 
     fn cursor_move(&mut self, f: impl FnOnce(&mut crate::shared::text_input::TextInput)) {
@@ -1185,6 +1249,124 @@ impl AppController {
         if is_filter {
             self.state.recompute_branch_filter();
         }
+    }
+
+    fn open_create_pr(&mut self) -> Result<()> {
+        let repo = self
+            .state
+            .selected_repo_ref()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+
+        let head_branch = repo
+            .current_branch
+            .clone()
+            .ok_or_else(|| anyhow!("no current branch"))?;
+
+        if head_branch == "main" || head_branch == "master" {
+            return Err(anyhow!(
+                "cannot create PR from {head_branch} — switch to a feature branch first"
+            ));
+        }
+
+        self.github.check_gh_auth()?;
+
+        let base_branch = if repo.branches.iter().any(|b| b == "main") {
+            "main".to_string()
+        } else if repo.branches.iter().any(|b| b == "master") {
+            "master".to_string()
+        } else {
+            repo.branches
+                .first()
+                .cloned()
+                .ok_or_else(|| anyhow!("no branches found"))?
+        };
+
+        self.state.create_pr_state = Some(CreatePrState {
+            title_input: crate::shared::text_input::TextInput::new(),
+            body_input: crate::shared::text_input::TextInput::new(),
+            base_branch,
+            head_branch,
+            draft: false,
+            active_field: CreatePrField::Title,
+        });
+        self.state.modal = Modal::CreatePr;
+        Ok(())
+    }
+
+    fn generate_pr_description(&mut self) -> Result<()> {
+        let ai = self
+            .ai_service
+            .clone()
+            .ok_or_else(|| anyhow!("not logged in to Copilot — press Ctrl+l to login"))?;
+
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+
+        let pr_state = self
+            .state
+            .create_pr_state
+            .as_ref()
+            .ok_or_else(|| anyhow!("no PR creation in progress"))?;
+
+        let base = pr_state.base_branch.clone();
+        let head = pr_state.head_branch.clone();
+
+        let commits = self.git.log_between(&repo_path, &base, &head)?;
+        let diff = self.git.diff_between(&repo_path, &base, &head)?;
+
+        if commits.trim().is_empty() && diff.trim().is_empty() {
+            return Err(anyhow!(
+                "no changes between {base} and {head} — push your commits first"
+            ));
+        }
+
+        let job_id = self.state.start_job(JobKind::AiPrDescription);
+        let sender = self.bg_sender.clone();
+
+        thread::spawn(move || {
+            let result = ai.generate_pr_description(&commits, &diff);
+            let _ = sender.send(BackgroundResult::PrDescriptionGenerated(job_id, result));
+        });
+
+        Ok(())
+    }
+
+    fn confirm_create_pr(&mut self) -> Result<()> {
+        let pr_state = self
+            .state
+            .create_pr_state
+            .clone()
+            .ok_or_else(|| anyhow!("no PR creation in progress"))?;
+
+        let title = pr_state.title_input.content().trim().to_string();
+        if title.is_empty() {
+            return Err(anyhow!("PR title cannot be empty"));
+        }
+
+        let repo_path = self
+            .state
+            .selected_repo_path()
+            .ok_or_else(|| anyhow!("no repository selected"))?;
+
+        let params = crate::domain::pull_request::CreatePrParams {
+            title,
+            body: pr_state.body_input.content().trim().to_string(),
+            base: pr_state.base_branch,
+            head: pr_state.head_branch,
+            draft: pr_state.draft,
+        };
+
+        self.state.close_modal();
+        let job_id = self.state.start_job(JobKind::CreatePr);
+        let sender = self.bg_sender.clone();
+        let github = self.github;
+        thread::spawn(move || {
+            let result = github.create_pr(&repo_path, &params);
+            let _ = sender.send(BackgroundResult::PrCreated(job_id, result));
+        });
+        Ok(())
     }
 
     fn refresh_diff(&mut self) {

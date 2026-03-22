@@ -31,6 +31,8 @@ pub trait GitRepositoryService {
     fn has_remote(&self, repo_path: &Path, name: &str) -> bool;
     fn amend_commit(&self, repo_path: &Path, message: &CommitMessage) -> Result<()>;
     fn last_commit_message(&self, repo_path: &Path) -> Result<String>;
+    fn log_between(&self, repo_path: &Path, base: &str, head: &str) -> Result<String>;
+    fn diff_between(&self, repo_path: &Path, base: &str, head: &str) -> Result<String>;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -218,6 +220,23 @@ impl GitRepositoryService for GitCliRepositoryService {
         command.arg("log").arg("-1").arg("--format=%B");
         let output = run_command(&mut command)?;
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+
+    fn log_between(&self, repo_path: &Path, base: &str, head: &str) -> Result<String> {
+        let mut command = base_git_command(repo_path);
+        command
+            .arg("log")
+            .arg("--oneline")
+            .arg(format!("{base}..{head}"));
+        let output = run_command(&mut command)?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    fn diff_between(&self, repo_path: &Path, base: &str, head: &str) -> Result<String> {
+        let mut command = base_git_command(repo_path);
+        command.arg("diff").arg(format!("{base}...{head}"));
+        let output = run_command(&mut command)?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 }
 

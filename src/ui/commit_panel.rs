@@ -221,7 +221,7 @@ fn split_subject_body(input: &str) -> (&str, Option<&str>) {
 }
 
 /// Render a single-line text with a cursor block at the given byte position.
-fn render_with_cursor<'a>(
+pub(crate) fn render_with_cursor<'a>(
     text: &str,
     cursor: usize,
     text_style: Style,
@@ -251,7 +251,7 @@ fn render_with_cursor<'a>(
 }
 
 /// Render multi-line text with a cursor at a byte position within the text.
-fn render_multiline_with_cursor<'a>(
+pub(crate) fn render_multiline_with_cursor<'a>(
     text: &str,
     cursor: usize,
     text_style: Style,

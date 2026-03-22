@@ -5,7 +5,7 @@ use std::time::Instant;
 use anyhow::Result;
 
 use crate::app::state::RepositoryState;
-use crate::domain::ai::GeneratedCommitMessage;
+use crate::domain::ai::{GeneratedCommitMessage, GeneratedPrDescription};
 use crate::domain::pull_request::{PrCheckInfo, PrInfo};
 
 static NEXT_JOB_ID: AtomicU64 = AtomicU64::new(1);
@@ -33,6 +33,8 @@ pub enum JobKind {
     RefreshRepos,
     ReloadRepo,
     CreateRepo,
+    AiPrDescription,
+    CreatePr,
 }
 
 impl JobKind {
@@ -50,6 +52,8 @@ impl JobKind {
             Self::RefreshRepos => "Refreshing repositories",
             Self::ReloadRepo => "Reloading repository",
             Self::CreateRepo => "Creating repository",
+            Self::AiPrDescription => "Generating PR description",
+            Self::CreatePr => "Creating pull request",
         }
     }
 }
@@ -79,6 +83,8 @@ pub enum BackgroundResult {
     PrChecksLoaded(JobId, Result<Vec<PrCheckInfo>>),
     ReposRefreshed(JobId, Result<Vec<RepositoryState>>),
     RepoCreated(JobId, Result<String>),
+    PrDescriptionGenerated(JobId, Result<GeneratedPrDescription>),
+    PrCreated(JobId, Result<PrInfo>),
 }
 
 pub fn create_channel() -> (

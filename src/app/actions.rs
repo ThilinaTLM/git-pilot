@@ -81,6 +81,10 @@ pub enum AppAction {
     ActivateBranchFilter,
     DeactivateBranchFilter,
     ConfirmMerge,
+    OpenCreatePr,
+    GeneratePrDescription,
+    TogglePrDraft,
+    SwitchPrField,
 }
 
 pub fn map_key_event(
@@ -115,6 +119,7 @@ fn map_modal_key(modal: &Modal, key_event: KeyEvent, branch_filter_active: bool)
             _ => AppAction::Noop,
         },
         Modal::CreateRepo(step) => map_create_repo_key(step, key_event),
+        Modal::CreatePr => map_create_pr_key(key_event),
     }
 }
 
@@ -264,6 +269,7 @@ fn map_pr_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousPr,
         KeyCode::Enter => AppAction::OpenPrInBrowser,
         KeyCode::Char('r') => AppAction::RefreshPrs,
+        KeyCode::Char('n') => AppAction::OpenCreatePr,
         KeyCode::PageDown => AppAction::ScrollPrDetailDown,
         KeyCode::PageUp => AppAction::ScrollPrDetailUp,
         _ => AppAction::Noop,
@@ -326,6 +332,35 @@ fn map_commit_input_key(key_event: KeyEvent) -> AppAction {
     match key_event.code {
         KeyCode::Esc => AppAction::CloseModal,
         KeyCode::Enter => AppAction::ConfirmModal,
+        KeyCode::Backspace => AppAction::Backspace,
+        KeyCode::Delete => AppAction::Delete,
+        KeyCode::Left => AppAction::CursorLeft,
+        KeyCode::Right => AppAction::CursorRight,
+        KeyCode::Home => AppAction::CursorHome,
+        KeyCode::End => AppAction::CursorEnd,
+        KeyCode::Char(ch) => AppAction::InsertChar(ch),
+        _ => AppAction::Noop,
+    }
+}
+
+fn map_create_pr_key(key_event: KeyEvent) -> AppAction {
+    if key_event.modifiers == KeyModifiers::CONTROL {
+        return match key_event.code {
+            KeyCode::Char('g') => AppAction::GeneratePrDescription,
+            KeyCode::Char('l') => AppAction::CopilotLogin,
+            KeyCode::Char('n') => AppAction::InsertNewline,
+            KeyCode::Char('d') => AppAction::TogglePrDraft,
+            KeyCode::Left => AppAction::CursorWordLeft,
+            KeyCode::Right => AppAction::CursorWordRight,
+            KeyCode::Char('w') | KeyCode::Backspace => AppAction::DeleteWordBack,
+            _ => AppAction::Noop,
+        };
+    }
+
+    match key_event.code {
+        KeyCode::Esc => AppAction::CloseModal,
+        KeyCode::Enter => AppAction::ConfirmModal,
+        KeyCode::Tab => AppAction::SwitchPrField,
         KeyCode::Backspace => AppAction::Backspace,
         KeyCode::Delete => AppAction::Delete,
         KeyCode::Left => AppAction::CursorLeft,
