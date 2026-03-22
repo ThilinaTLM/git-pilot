@@ -33,42 +33,27 @@ pub fn build_spans(state: &AppState) -> Vec<Span<'static>> {
         theme::accent_text_style(),
     ));
 
-    // Branch count
-    let branch_count = repo.branches.len();
-    spans.push(Span::styled(" • ", theme::muted_text_style()));
-    spans.push(Span::styled(
-        format!(
-            "{branch_count} branch{}",
-            if branch_count == 1 { "" } else { "es" }
-        ),
-        theme::text_style(),
-    ));
-
-    // PR count (only if > 0)
-    let pr_count = repo.pull_requests.len();
-    if pr_count > 0 {
-        spans.push(Span::styled(" • ", theme::muted_text_style()));
-        spans.push(Span::styled(
-            format!("{pr_count} PR{}", if pr_count == 1 { "" } else { "s" }),
-            theme::text_style(),
-        ));
-    }
-
     // Staged count
     let staged_count = repo.status_files.iter().filter(|f| f.staged).count();
-    spans.push(Span::styled(" • ", theme::muted_text_style()));
+    spans.push(Span::raw("  "));
     spans.push(Span::styled(
-        format!("{staged_count} staged"),
+        format!("+{staged_count}"),
         theme::success_text_style(),
     ));
 
     // Unstaged count (including untracked)
     let unstaged_count = repo.status_files.iter().filter(|f| f.unstaged).count();
-    spans.push(Span::styled(" • ", theme::muted_text_style()));
+    spans.push(Span::raw("  "));
     spans.push(Span::styled(
-        format!("{unstaged_count} unstaged"),
+        format!("~{unstaged_count}"),
         theme::warning_text_style(),
     ));
+
+    // PR count (always shown)
+    let pr_count = repo.pull_requests.len();
+    spans.push(Span::raw("  "));
+    spans.push(Span::styled("PR", theme::muted_text_style()));
+    spans.push(Span::styled(format!(" {pr_count}"), theme::text_style()));
 
     spans
 }
