@@ -121,9 +121,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         ))
     } else {
         let char_count = subject.len();
-        let count_style = if char_count > 72 {
+        let max_len = state.settings.commit.subject_max_length;
+        let warn_threshold = max_len * 2 / 3;
+        let count_style = if char_count > max_len {
             theme::error_text_style()
-        } else if char_count > 50 {
+        } else if char_count > warn_threshold {
             theme::warning_text_style()
         } else {
             placeholder_style
@@ -135,7 +137,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             vec![Span::styled(subject.to_string(), text_style)]
         };
         spans.push(Span::styled("  ", count_style));
-        spans.push(Span::styled(format!("{char_count}/72"), count_style));
+        spans.push(Span::styled(format!("{char_count}/{max_len}"), count_style));
         Line::from(spans)
     };
     frame.render_widget(Paragraph::new(subject_display), subject_inner);

@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use anyhow::{Context, Result, anyhow};
 
 use crate::domain::ai::{GeneratedCommitMessage, GeneratedPrDescription};
+use crate::domain::settings::AiSettings;
 use crate::infrastructure::ai::AiService;
 
 use super::auth::CopilotTokenManager;
@@ -69,8 +70,15 @@ impl CopilotAiService {
 }
 
 impl AiService for CopilotAiService {
-    fn generate_commit_message(&self, diff: &str) -> Result<GeneratedCommitMessage> {
-        let content = self.chat_completion(prompts::commit_message_system_prompt(), diff)?;
+    fn generate_commit_message(
+        &self,
+        diff: &str,
+        ai_settings: &AiSettings,
+    ) -> Result<GeneratedCommitMessage> {
+        let prompt = prompts::commit_message_system_prompt(
+            ai_settings.commit_message_instructions.as_deref(),
+        );
+        let content = self.chat_completion(&prompt, diff)?;
         let content = content.trim();
 
         // Parse subject and optional body
@@ -87,16 +95,28 @@ impl AiService for CopilotAiService {
         }
     }
 
-    fn generate_branch_name(&self, diff: &str) -> Result<String> {
-        let content = self.chat_completion(prompts::branch_name_system_prompt(), diff)?;
+    fn generate_branch_name(&self, diff: &str, ai_settings: &AiSettings) -> Result<String> {
+        let prompt =
+            prompts::branch_name_system_prompt(ai_settings.branch_name_instructions.as_deref());
+        let content = self.chat_completion(&prompt, diff)?;
         Ok(content.trim().to_string())
     }
 
-    fn generate_pr_description(&self, commits: &str, diff: &str) -> Result<GeneratedPrDescription> {
+    fn generate_pr_description(
+        &self,
+        commits: &str,
+        diff: &str,
+        ai_settings: &AiSettings,
+    ) -> Result<GeneratedPrDescription> {
         let truncated_diff = truncate_pr_diff(diff);
         let user_content = format!("## Commits\n{commits}\n\n## Diff\n{truncated_diff}");
-        let content =
-            self.chat_completion(prompts::pr_description_system_prompt(), &user_content)?;
+        // Combine PR title and description instructions
+        let pr_extra = combine_pr_instructions(
+            ai_settings.pr_title_instructions.as_deref(),
+            ai_settings.pr_description_instructions.as_deref(),
+        );
+        let prompt = prompts::pr_description_system_prompt(pr_extra.as_deref());
+        let content = self.chat_completion(&prompt, &user_content)?;
 
         // Parse TITLE: and BODY: sections
         let title = content
@@ -112,6 +132,28 @@ impl AiService for CopilotAiService {
         };
 
         Ok(GeneratedPrDescription { title, body })
+    }
+}
+
+fn combine_pr_instructions(
+    title_instructions: Option<&str>,
+    description_instructions: Option<&str>,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(t) = title_instructions
+        && !t.is_empty()
+    {
+        parts.push(format!("For the TITLE: {t}"));
+    }
+    if let Some(d) = description_instructions
+        && !d.is_empty()
+    {
+        parts.push(format!("For the BODY: {d}"));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("\n"))
     }
 }
 
