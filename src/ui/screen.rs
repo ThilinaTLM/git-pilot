@@ -4,8 +4,8 @@ use ratatui::widgets::Block;
 use crate::app::state::{AppState, Modal, View};
 use crate::ui::{
     branch_manage_panel, branch_panel, commit_log_panel, commit_panel, copilot_login_panel,
-    create_pr_panel, create_repo_panel, diff_panel, help, layout, pr_view, settings_panel,
-    status_list, tabs, theme, view_tabs,
+    create_pr_panel, create_repo_panel, diff_panel, help, layout, message_panel, pr_view,
+    settings_panel, status_list, tabs, theme, view_tabs,
 };
 
 pub fn render(frame: &mut Frame, state: &AppState) {
@@ -45,5 +45,6 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         Modal::CopilotLogin => copilot_login_panel::render(frame, area, state),
         Modal::CreateRepo(_) => create_repo_panel::render(frame, area, state),
         Modal::CreatePr => create_pr_panel::render(frame, area, state),
+        Modal::Message => message_panel::render(frame, area, state),
     }
 }

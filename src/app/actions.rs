@@ -66,9 +66,9 @@ pub enum AppAction {
     FetchRemote,
     PushBranch,
     PullBranch,
-    ToggleAutoFetch,
-    IncreaseAutoFetchInterval,
-    DecreaseAutoFetchInterval,
+    ToggleSettingsBool,
+    IncreaseSettingsValue,
+    DecreaseSettingsValue,
     SelectNextSettingsItem,
     SelectPreviousSettingsItem,
     SelectFile(usize),
@@ -120,6 +120,10 @@ fn map_modal_key(modal: &Modal, key_event: KeyEvent, branch_filter_active: bool)
         },
         Modal::CreateRepo(step) => map_create_repo_key(step, key_event),
         Modal::CreatePr => map_create_pr_key(key_event),
+        Modal::Message => match key_event.code {
+            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => AppAction::CloseModal,
+            _ => AppAction::Noop,
+        },
     }
 }
 
@@ -248,9 +252,9 @@ fn map_settings_modal_key(key_event: KeyEvent) -> AppAction {
         KeyCode::Esc | KeyCode::Char('q') => AppAction::CloseModal,
         KeyCode::Down | KeyCode::Char('j') => AppAction::SelectNextSettingsItem,
         KeyCode::Up | KeyCode::Char('k') => AppAction::SelectPreviousSettingsItem,
-        KeyCode::Char(' ') | KeyCode::Enter => AppAction::ToggleAutoFetch,
-        KeyCode::Char('+') | KeyCode::Char('=') => AppAction::IncreaseAutoFetchInterval,
-        KeyCode::Char('-') => AppAction::DecreaseAutoFetchInterval,
+        KeyCode::Char(' ') | KeyCode::Enter => AppAction::ToggleSettingsBool,
+        KeyCode::Char('+') | KeyCode::Char('=') => AppAction::IncreaseSettingsValue,
+        KeyCode::Char('-') => AppAction::DecreaseSettingsValue,
         _ => AppAction::Noop,
     }
 }
